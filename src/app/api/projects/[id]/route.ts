@@ -9,7 +9,7 @@ type Context = { params: Promise<{ id: string }> };
 
 async function open(request: Request, { params }: Context) {
   const viewer = await viewerOf(request);
-  if (!viewer) return { blocked: signInRequired() };
+  if (!viewer) return { blocked: signInRequired(request) };
   if (!accountsOn()) return { blocked: Response.json({ error: 'Accounts are off.' }, { status: 404 }) };
 
   const { id } = await params;

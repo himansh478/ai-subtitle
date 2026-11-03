@@ -17,6 +17,8 @@ const LOUDNESS_STEP = 0.01;
 const HEADER_SLACK = 2;
 /** A service can hang without ever failing, so a job has a last moment to give up. */
 const LONGEST_JOB = 240000;
+/** Seconds the host lets this run, above LONGEST_JOB so the job's own limit and refund come first. */
+export const maxDuration = 300;
 const TOO_SLOW = 'This is taking too long, so we stopped. Your minutes were given back. Please try again.';
 
 function readHeader<T>(request: Request, name: string, fallback: T): T {
@@ -32,7 +34,7 @@ function readHeader<T>(request: Request, name: string, fallback: T): T {
 // the job fails, so nobody pays for an upload that produced nothing.
 export async function POST(request: Request) {
   const viewer = await viewerOf(request);
-  if (!viewer) return signInRequired();
+  if (!viewer) return signInRequired(request);
   if (Number(request.headers.get('content-length') ?? 0) > LARGEST_AUDIO) {
     return Response.json({ error: TOO_LONG }, { status: 413 });
   }

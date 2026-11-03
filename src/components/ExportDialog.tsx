@@ -14,6 +14,9 @@ type Finished = { url: string; fileName: string; summary: string };
 
 const TITLES = { mp4: 'Export video', srt: 'Export subtitles', overlay: 'Export transparent captions' };
 
+/** Server export sends the whole video, more than a hosted request can carry, so it is local only for now. */
+const SERVER_EXPORT = process.env.NODE_ENV === 'development';
+
 export function ExportDialog({ kind, captions, preview, onClose }: { kind: ExportKind; captions: Caption[]; preview: PreviewHandle; onClose: () => void }) {
   const name = useEditor((s) => s.project?.name ?? 'captions');
   const media = useEditor((s) => s.project?.media);
@@ -40,7 +43,7 @@ export function ExportDialog({ kind, captions, preview, onClose }: { kind: Expor
     const { width, height } = outputSize(media, reframe, settings.quality);
     canEncodeVideo(width, height).then((able) => {
       setCanEncode(able);
-      if (!able) setOnServer(true);
+      if (!able && SERVER_EXPORT) setOnServer(true);
     });
   }, [kind, media, reframe, settings.quality]);
 
@@ -83,7 +86,7 @@ export function ExportDialog({ kind, captions, preview, onClose }: { kind: Expor
                 <option value="60">60 fps</option>
               </select>
             </label>
-            {kind === 'mp4' && (
+            {kind === 'mp4' && SERVER_EXPORT && (
               <label className="field">
                 Made on
                 <select id="where" value={onServer ? 'server' : 'here'} disabled={!canEncode} onChange={(e) => setOnServer(e.target.value === 'server')}>
@@ -92,7 +95,11 @@ export function ExportDialog({ kind, captions, preview, onClose }: { kind: Expor
                 </select>
               </label>
             )}
-            {!canEncode && <p className="hint">This browser can&apos;t make the video by itself, so our server will finish it.</p>}
+            {!canEncode && (
+              <p className="hint">
+                {SERVER_EXPORT ? 'This browser can’t make the video by itself, so our server will finish it.' : 'This browser can’t make this video. Please use Chrome or Edge on a computer.'}
+              </p>
+            )}
             {kind === 'mp4' && onServer && (
               <p className="hint" id="server-consent">
                 Your video will be uploaded to make this export, and deleted as soon as it&apos;s done.

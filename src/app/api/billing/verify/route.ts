@@ -6,7 +6,7 @@ import { capturePayment, fetchPayment, validCheckout } from '@/server/razorpay';
 // until the signature checks out and Razorpay itself confirms the payment.
 export async function POST(request: Request) {
   const viewer = await viewerOf(request);
-  if (!viewer) return signInRequired();
+  if (!viewer) return signInRequired(request);
 
   const { orderId, paymentId, signature } = (await request.json().catch(() => ({}))) as Record<string, unknown>;
   if (typeof orderId !== 'string' || typeof paymentId !== 'string' || typeof signature !== 'string') {

@@ -2,11 +2,14 @@ import { realign, type Language } from '@/server/align';
 import { signInRequired, viewerOf } from '@/server/auth';
 import { convert } from '@/server/convert';
 
+/** Seconds the host lets one call run. */
+export const maxDuration = 60;
+
 const MOST_WORDS = 200;
 
 // Re-times one short phrase after a word fix. The browser sends only that phrase's audio.
 export async function POST(request: Request) {
-  if (!(await viewerOf(request))) return signInRequired();
+  if (!(await viewerOf(request))) return signInRequired(request);
   const form = await request.formData();
   const audio = form.get('audio');
   const words = JSON.parse(String(form.get('words'))) as string[];

@@ -1,10 +1,13 @@
 import { signInRequired, viewerOf } from '@/server/auth';
 import { translate } from '@/server/translate';
 
+/** Seconds the host lets one call run. */
+export const maxDuration = 60;
+
 const MOST_LINES = 3000;
 
 export async function POST(request: Request) {
-  if (!(await viewerOf(request))) return signInRequired();
+  if (!(await viewerOf(request))) return signInRequired(request);
   const { lines } = (await request.json()) as { lines: string[] };
   if (!lines?.length || lines.length > MOST_LINES) return Response.json({ error: 'Bad request' }, { status: 400 });
 

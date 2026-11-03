@@ -6,7 +6,7 @@ import { accountsOn } from '@/server/supabase';
 
 export async function GET(request: Request) {
   const viewer = await viewerOf(request);
-  if (!viewer) return signInRequired();
+  if (!viewer) return signInRequired(request);
   if (!accountsOn()) return Response.json({ error: 'Accounts are off.' }, { status: 404 });
 
   const [state, history] = await Promise.all([accountState(viewer.id), accountHistory(viewer.id)]);

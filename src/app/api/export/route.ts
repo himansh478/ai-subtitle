@@ -30,7 +30,7 @@ function readOptions(text: unknown): BurnOptions | null {
 
 export async function POST(request: Request) {
   const viewer = await viewerOf(request);
-  if (!viewer) return signInRequired();
+  if (!viewer) return signInRequired(request);
 
   const form = await request.formData().catch(() => null);
   const video = form?.get('video');

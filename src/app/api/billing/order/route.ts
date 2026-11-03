@@ -6,7 +6,7 @@ import { createOrder, paymentsOn } from '@/server/razorpay';
 // The plan alone comes from the browser. Price and minutes always come from plans.ts.
 export async function POST(request: Request) {
   const viewer = await viewerOf(request);
-  if (!viewer) return signInRequired();
+  if (!viewer) return signInRequired(request);
   if (!paymentsOn()) return Response.json({ error: 'Payments are not switched on yet.' }, { status: 503 });
 
   const { plan: id } = (await request.json().catch(() => ({}))) as { plan?: unknown };
