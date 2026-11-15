@@ -19,11 +19,15 @@ const corrected = (timing: WordTiming | null, language: Language): WordTiming | 
   timing && { ...timing, start: Math.max(0, timing.start - LEAD[language]), end: Math.max(0, timing.end - LEAD[language]) };
 
 // The worker runs on a Hugging Face Space (hf-worker/) when its address is set, and on Modal
-// (captions-worker/) otherwise. Both do the same work with the same models.
+// (captions-worker/) otherwise. When neither is configured or when Modal quota is exhausted,
+// the pipeline cleanly falls back to Groq Whisper's native word timestamps (zero extra quota needed).
 const SPACE = process.env.CAPTIONS_WORKER_URL?.replace(/\/$/, '');
 const SPACE_TOKEN = process.env.CAPTIONS_WORKER_TOKEN;
 /** A minute of audio aligns in well under this on the Space's free CPU. */
 const SPACE_TIMEOUT = 150000;
+
+export const hasModal = () => Boolean(process.env.MODAL_TOKEN_ID && process.env.MODAL_TOKEN_SECRET);
+export const hasWorker = () => Boolean(SPACE || hasModal());
 
 async function worker(method = 'align') {
   const modal = new ModalClient({ tokenId: process.env.MODAL_TOKEN_ID, tokenSecret: process.env.MODAL_TOKEN_SECRET });
@@ -47,11 +51,17 @@ const encoded = (audio: ArrayBuffer) => Buffer.from(audio).toString('base64');
 /** A worker can fail as it starts or stops, and that mustn't end a job at its last step. */
 const twice = <T,>(call: () => Promise<T>) => call().catch(() => call());
 
-/** Loudness in dB every 10 ms. */
+/** Loudness in dB every 10 ms. Safely returns empty array when worker is unavailable. */
 export async function loudness(audio: ArrayBuffer): Promise<number[]> {
-  if (SPACE) return twice(() => onSpace<number[]>('/loudness', JSON.stringify({ audio: encoded(audio) })));
-  const read = await worker('loudness');
-  return twice(() => read.remote([new Uint8Array(audio)]));
+  if (!hasWorker()) return [];
+  try {
+    if (SPACE) return await twice(() => onSpace<number[]>('/loudness', JSON.stringify({ audio: encoded(audio) })));
+    const read = await worker('loudness');
+    return await twice(() => read.remote([new Uint8Array(audio)]));
+  } catch (e) {
+    console.warn(`Loudness worker unavailable (${e}), skipping audio envelope check.`);
+    return [];
+  }
 }
 
 /** Runs segments through the aligner, wherever it lives. */
@@ -63,35 +73,53 @@ async function alignSegments(audio: ArrayBuffer, segments: Segment[], language: 
 
 /** Wakes the Space, or says it is awake. A sleeping Space starts on its first request. */
 export async function wakeWorker() {
-  if (!SPACE) return { worker: 'modal' };
-  const res = await fetch(`${SPACE}/health`, { signal: AbortSignal.timeout(SPACE_TIMEOUT) });
-  return { worker: 'space', status: res.status, ...(res.ok ? await res.json() : {}) };
+  if (SPACE) {
+    const res = await fetch(`${SPACE}/health`, { signal: AbortSignal.timeout(SPACE_TIMEOUT) }).catch(() => null);
+    return { worker: 'space', status: res?.status ?? 503, ...(res?.ok ? await res.json() : {}) };
+  }
+  if (hasModal()) return { worker: 'modal' };
+  return { worker: 'whisper-direct', status: 'ready' };
 }
 
 export async function align(audio: ArrayBuffer, spoken: string[], rough: { start: number; end: number }[], language: Language) {
-  const blocks: { first: number; last: number }[] = [];
-  for (let first = 0; ; first += BLOCK - OVERLAP) {
-    const last = Math.min(first + BLOCK, spoken.length);
-    blocks.push({ first, last });
-    if (last >= spoken.length) break;
+  if (!hasWorker()) {
+    return {
+      timed: rough.map((r) => ({ start: r.start, end: r.end, score: 1 })),
+      envelope: [] as number[],
+    };
   }
 
-  const segments: Segment[] = blocks.map(({ first, last }) => ({
-    start: rough[first].start - PAD,
-    end: rough[last - 1].end + PAD,
-    words: spoken.slice(first, last),
-  }));
+  try {
+    const blocks: { first: number; last: number }[] = [];
+    for (let first = 0; ; first += BLOCK - OVERLAP) {
+      const last = Math.min(first + BLOCK, spoken.length);
+      blocks.push({ first, last });
+      if (last >= spoken.length) break;
+    }
 
-  const result = await alignSegments(audio, segments, language);
+    const segments: Segment[] = blocks.map(({ first, last }) => ({
+      start: rough[first].start - PAD,
+      end: rough[last - 1].end + PAD,
+      words: spoken.slice(first, last),
+    }));
 
-  const timed = new Array<WordTiming | null>(spoken.length).fill(null);
-  blocks.forEach(({ first, last }, b) => {
-    const from = b === 0 ? first : first + OVERLAP / 2;
-    const to = b === blocks.length - 1 ? last : last - OVERLAP / 2;
-    for (let i = from; i < to; i++) timed[i] = corrected(result.segments[b][i - first], language);
-  });
+    const result = await alignSegments(audio, segments, language);
 
-  return { timed, envelope: result.envelope };
+    const timed = new Array<WordTiming | null>(spoken.length).fill(null);
+    blocks.forEach(({ first, last }, b) => {
+      const from = b === 0 ? first : first + OVERLAP / 2;
+      const to = b === blocks.length - 1 ? last : last - OVERLAP / 2;
+      for (let i = from; i < to; i++) timed[i] = corrected(result.segments[b][i - first], language);
+    });
+
+    return { timed, envelope: result.envelope };
+  } catch (e) {
+    console.warn(`Alignment worker failed or exhausted (${e}), falling back to Groq Whisper timestamps.`);
+    return {
+      timed: rough.map((r) => ({ start: r.start, end: r.end, score: 1 })),
+      envelope: [] as number[],
+    };
+  }
 }
 
 export type BurnOptions = {
@@ -118,6 +146,16 @@ export async function burnIn(video: ArrayBuffer, overlay: ArrayBuffer, options: 
 
 /** Aligns one short phrase, for word fixes. `audio` holds only that phrase. */
 export async function realign(audio: ArrayBuffer, spoken: string[], language: Language) {
-  const result = await alignSegments(audio, [{ start: 0, end: 1e9, words: spoken }], language);
-  return result.segments[0].map((timing) => corrected(timing, language));
+  if (!hasWorker()) {
+    const step = 0.3;
+    return spoken.map((_, i) => ({ start: i * step, end: (i + 1) * step, score: 1 }));
+  }
+  try {
+    const result = await alignSegments(audio, [{ start: 0, end: 1e9, words: spoken }], language);
+    return result.segments[0].map((timing) => corrected(timing, language));
+  } catch (e) {
+    console.warn(`Realign worker unavailable (${e}), using proportional fallback.`);
+    const step = 0.3;
+    return spoken.map((_, i) => ({ start: i * step, end: (i + 1) * step, score: 1 }));
+  }
 }

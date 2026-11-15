@@ -33,6 +33,7 @@ export default function StudioPage({ params }: { params: Promise<{ id: string }>
   const [video, setVideo] = useState<File | null>(null);
   const [failed, setFailed] = useState(false);
   const [exporting, setExporting] = useState<ExportKind | null>(null);
+  const [mobileTab, setMobileTab] = useState<'captions' | 'style' | 'timeline'>('captions');
 
   useEffect(() => {
     Promise.all([loadProject(id), readMedia(id, 'source')])
@@ -102,14 +103,52 @@ export default function StudioPage({ params }: { params: Promise<{ id: string }>
 
   return (
     <>
-      <div className="studio">
+      <div className={`studio mobile-tab-${mobileTab}`}>
         <TopBar onExport={setExporting} />
+        <div className="mobile-tab-bar" role="tablist" aria-label="Studio View Selector">
+          <button
+            role="tab"
+            type="button"
+            aria-selected={mobileTab === 'captions'}
+            className={mobileTab === 'captions' ? 'active' : ''}
+            onClick={() => setMobileTab('captions')}
+          >
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+            </svg>
+            Captions
+          </button>
+          <button
+            role="tab"
+            type="button"
+            aria-selected={mobileTab === 'style'}
+            className={mobileTab === 'style' ? 'active' : ''}
+            onClick={() => setMobileTab('style')}
+          >
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <circle cx="12" cy="12" r="10"/>
+              <path d="m4.93 4.93 4.24 4.24"/>
+            </svg>
+            Styles
+          </button>
+          <button
+            role="tab"
+            type="button"
+            aria-selected={mobileTab === 'timeline'}
+            className={mobileTab === 'timeline' ? 'active' : ''}
+            onClick={() => setMobileTab('timeline')}
+          >
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <polygon points="5 3 19 12 5 21 5 3"/>
+            </svg>
+            Timeline
+          </button>
+        </div>
         <CaptionList captions={captions} seek={(t) => previewRef.current?.seek(t)} />
         <Preview key={doc.reframe ? 'vertical' : 'original'} ref={previewRef} video={video} captions={captions} size={size} />
         <StylePanel seek={(t) => previewRef.current?.seek(t)} />
         <Timeline captions={captions} seek={(t) => previewRef.current?.seek(t)} />
       </div>
-      <p className="narrow-note">The caption editor needs a wider screen. Open it on a laptop or desktop.</p>
       {notice && (
         <div className="notice" role="status">
           {notice}

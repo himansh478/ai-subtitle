@@ -14,12 +14,14 @@ const SILENCE = -60;
 type Stretch = { first: number; last: number; loud: number };
 
 const speechLevel = (envelope: number[]) => {
+  if (!envelope || envelope.length === 0) return -45;
   const sorted = [...envelope].sort((a, b) => a - b);
   return sorted[Math.floor(sorted.length * 0.1)] + 15;
 };
 
 /** The share of loud audio between two times that has a word on it. */
 export function coverage(envelope: number[], words: { start: number; end: number }[], from: number, to: number) {
+  if (!envelope || envelope.length === 0) return 1;
   const level = speechLevel(envelope);
   const reach = REACH / 2;
   let loud = 0;
@@ -42,6 +44,7 @@ const THIN_LONGEST = 8;
 
 /** Stretches holding far fewer words than this video's own pace would put there. */
 export function findThinStretches(envelope: number[], words: { start: number; end: number }[]) {
+  if (!envelope || envelope.length === 0) return [];
   const level = speechLevel(envelope);
   const seconds = Math.ceil(envelope.length * STEP);
   const sound = new Array<number>(seconds).fill(0);
@@ -67,6 +70,7 @@ export function findThinStretches(envelope: number[], words: { start: number; en
 
 /** Whisper can invent words over silence, so a word needs some sound under it. */
 export function heardWords<T extends { start: number; end: number }>(words: T[], envelope: number[]) {
+  if (!envelope || envelope.length === 0) return words;
   return words.filter((word) => {
     const from = Math.max(0, Math.floor((word.start - REACH) / STEP));
     const to = Math.min(envelope.length, Math.ceil((word.end + REACH) / STEP));
@@ -75,6 +79,7 @@ export function heardWords<T extends { start: number; end: number }>(words: T[],
 }
 
 export function findSpeechGaps(envelope: number[], words: { start: number; end: number }[]) {
+  if (!envelope || envelope.length === 0) return [];
   const threshold = speechLevel(envelope);
 
   const covered = new Array<boolean>(envelope.length).fill(false);

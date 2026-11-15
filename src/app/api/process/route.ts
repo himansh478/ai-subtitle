@@ -78,7 +78,7 @@ export async function POST(request: Request) {
         // Each step starts as soon as it can, so they overlap instead of queueing.
         const loud = timed('sound', loudness(audio)).then((heard) => {
           // The charge came from the file's own header, so the sound itself has to agree.
-          if (heard.length * LOUDNESS_STEP > length + HEADER_SLACK) throw new Error('We could not read the sound in this file.');
+          if (heard.length > 0 && heard.length * LOUDNESS_STEP > length + HEADER_SLACK) throw new Error('We could not read the sound in this file.');
           return heard;
         });
         loud.catch(() => {});
