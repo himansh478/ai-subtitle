@@ -4,7 +4,7 @@ import { drawCutout, type PersonMask } from './segment';
 import type { Studio } from './studio';
 import type { Caption, Style } from './types';
 
-const BITRATE_1080 = 12_000_000;
+const BITRATE_1080 = 25_000_000;
 const HIGHEST_BITRATE = 60_000_000;
 const SHORT_SIDE = 1080;
 const SHORT_SIDE_4K = 2160;

@@ -20,10 +20,19 @@ export async function fetchAccount() {
   return res.ok ? ((await res.json()) as Account) : null;
 }
 
+const NO_WATERMARK_EMAILS = [
+  'sudhanshugour89@gmail.com',
+  'himanshgour7@gmail.com',
+];
+
 /** The mark goes on unless the account proves it shouldn't, so a failed check can't remove it. */
 export async function currentWatermark() {
   if (!accountsOn) return false;
-  return (await fetchAccount())?.watermark ?? true;
+  const account = await fetchAccount();
+  if (account?.email && NO_WATERMARK_EMAILS.includes(account.email.toLowerCase())) {
+    return false;
+  }
+  return account?.watermark ?? true;
 }
 
 export const minutesLeft = (account: Account) => Math.floor((account.freeLeft + account.paidLeft) / 60);

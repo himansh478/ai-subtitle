@@ -1,7 +1,7 @@
 import { ALL_FORMATS, BufferSource, Input } from 'mediabunny';
 import { isTooLong, TOO_LONG } from '@/lib/plans';
 import { captionText } from '@/lib/project';
-import { align, loudness } from '@/server/align';
+import { align, loudness, type WordTiming } from '@/server/align';
 import { signInRequired, viewerOf } from '@/server/auth';
 import { refund, spend } from '@/server/billing';
 import { convert } from '@/server/convert';
@@ -101,7 +101,16 @@ export async function POST(request: Request) {
         const words = applyVocabulary(raw.map((w, i) => ({ ...w, ...converted[i] })), vocabulary);
 
         send({ stage: 'aligning' });
-        const { timed: exact, envelope } = await timed('timing', align(audio, words.map((w) => w.spoken), words, language));
+        const heard = await loud;
+        let exact: (WordTiming | null)[] = [];
+        let envelope = heard;
+        let roughTiming = false;
+        try {
+          ({ timed: exact, envelope } = await timed('timing', align(audio, words.map((w) => w.spoken), words, language)));
+        } catch (e) {
+          roughTiming = true;
+          console.warn(`Timing unavailable, keeping Whisper's word times: ${e}`);
+        }
 
         const tokens = words.map((word, i) => ({
           source: language === 'en' ? word.fixed + (word.word.match(/[,.?!]+$/)?.[0] ?? '') : word.fixed,
@@ -123,8 +132,8 @@ export async function POST(request: Request) {
           }
         });
 
-        console.log(`Captions for ${length.toFixed(0)} s of sound took ${seconds(started)} s (${steps.join(', ')})`);
-        send({ stage: 'done', result: { language, duration, tokens, envelope, speechGaps: findSpeechGaps(envelope, tokens) } });
+        console.log(`Captions for ${length.toFixed(0)} s of sound took ${seconds(started)} s (${steps.join(', ')})${roughTiming ? ', with Whisper timing' : ''}`);
+        send({ stage: 'done', result: { language, duration, tokens, envelope, speechGaps: findSpeechGaps(envelope, tokens), ...(roughTiming ? { roughTiming } : {}) } });
       };
       try {
         await Promise.race([job(), new Promise<never>((_, reject) => setTimeout(() => reject(new Error(TOO_SLOW)), LONGEST_JOB))]);
