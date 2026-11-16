@@ -398,9 +398,44 @@ export function Preview({
           />
           {safe && (
             <div className="safe" aria-hidden>
-              <i style={{ left: 0, right: 0, top: 0, height: '13%' }} />
-              <i style={{ left: 0, right: 0, bottom: 0, height: '20%' }} />
-              <i style={{ right: 0, top: '13%', bottom: '20%', width: '13%' }} />
+              {/* Top Unsafe Header Line (Instagram Reels / TikTok Search & Navigation) */}
+              <div className="safe-zone safe-zone-top" style={{ left: 0, right: 0, top: 0, height: '13%' }}>
+                <span className="safe-zone-label">
+                  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                    <circle cx="12" cy="12" r="10" />
+                    <line x1="4.93" y1="4.93" x2="19.07" y2="19.07" />
+                  </svg>
+                  HEADER SAFE LINE (13%)
+                </span>
+              </div>
+
+              {/* Bottom Unsafe Zone (Captions, Audio Title, Creator Profile & Bio) */}
+              <div className="safe-zone safe-zone-bottom" style={{ left: 0, right: 0, bottom: 0, height: '20%' }}>
+                <span className="safe-zone-label">
+                  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                    <circle cx="12" cy="12" r="10" />
+                    <line x1="4.93" y1="4.93" x2="19.07" y2="19.07" />
+                  </svg>
+                  BOTTOM SAFE LINE (20% UI COVER)
+                </span>
+              </div>
+
+              {/* Right Unsafe Zone (Like, Comment, Share, Sound Disc Icons) */}
+              <div className="safe-zone safe-zone-right" style={{ right: 0, top: '13%', bottom: '20%', width: '13%' }}>
+                <span className="safe-zone-label-vertical">
+                  ICONS (13%)
+                </span>
+              </div>
+
+              {/* Central Safe Text & Subtitles Framing Guide */}
+              <div className="safe-content-box" style={{ left: 0, right: '13%', top: '13%', bottom: '20%' }}>
+                <span className="safe-content-tag">
+                  <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3">
+                    <polyline points="20 6 9 17 4 12" />
+                  </svg>
+                  SAFE SUBTITLE AREA
+                </span>
+              </div>
             </div>
           )}
           {centred && <i className="centre-line" aria-hidden />}
