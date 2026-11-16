@@ -14,12 +14,27 @@ const stamp = (t: number) => {
   return `${m}:${(t % 60).toFixed(2).padStart(5, '0')}`;
 };
 
-type RowProps = { caption: Caption; active: boolean; hasNext: boolean; doubtful: string; seek: (t: number) => void };
+type RowProps = {
+  caption: Caption;
+  active: boolean;
+  hasNext: boolean;
+  doubtful: string;
+  seek: (t: number) => void;
+};
 
-const wordsKey = (caption: Caption) => caption.words.map((w) => `${w.text}|${w.start}|${w.end}|${w.style ? 1 : 0}`).join('~');
+const wordsKey = (caption: Caption) =>
+  caption.words.map((w) => `${w.text}|${w.start}|${w.end}|${w.style ? 1 : 0}`).join('~');
 
-// A long video has hundreds of rows, so each redraws only when its own caption changes.
-const Row = memo(RowView, (a, b) => a.active === b.active && a.hasNext === b.hasNext && a.doubtful === b.doubtful && a.caption.id === b.caption.id && wordsKey(a.caption) === wordsKey(b.caption));
+// Memoized row view for fast 60fps scrolling
+const Row = memo(
+  RowView,
+  (a, b) =>
+    a.active === b.active &&
+    a.hasNext === b.hasNext &&
+    a.doubtful === b.doubtful &&
+    a.caption.id === b.caption.id &&
+    wordsKey(a.caption) === wordsKey(b.caption)
+);
 
 const tokenIds = (caption: Caption) => caption.words.flatMap((w) => (w.tokenId ? [w.tokenId] : []));
 
@@ -34,7 +49,9 @@ function RowView({ caption, active, hasNext, doubtful, seek }: RowProps) {
   useEffect(() => setDraft(text), [text]);
 
   useEffect(() => {
-    if (active && document.activeElement !== areaRef.current) rowRef.current?.scrollIntoView({ block: 'nearest' });
+    if (active && document.activeElement !== areaRef.current) {
+      rowRef.current?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+    }
   }, [active]);
 
   const save = () => {
@@ -49,7 +66,6 @@ function RowView({ caption, active, hasNext, doubtful, seek }: RowProps) {
     syncScripts();
   };
 
-  // Splits at the word the cursor is in.
   const split = () => {
     const cursor = areaRef.current?.selectionStart ?? 0;
     const index = draft.slice(0, cursor).trim().split(/\s+/).filter(Boolean).length;
@@ -59,21 +75,60 @@ function RowView({ caption, active, hasNext, doubtful, seek }: RowProps) {
   return (
     <div className={`row ${active ? 'active' : ''}`} ref={rowRef}>
       <div className="row-head">
-        <button className="time" onClick={() => seek(captionStart(caption) + 0.001)}>
-          {stamp(captionStart(caption))} – {stamp(captionEnd(caption))}
+        <button
+          type="button"
+          className="time-badge"
+          onClick={() => seek(captionStart(caption) + 0.001)}
+          title="Click to jump playhead here"
+        >
+          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <polygon points="5 3 19 12 5 21 5 3"/>
+          </svg>
+          <span>{stamp(captionStart(caption))} – {stamp(captionEnd(caption))}</span>
         </button>
+
         <div className="row-actions">
-          <button className="ghost" onClick={split} disabled={caption.words.length < 2 || !caption.words[0].tokenId} title="Split at the cursor">
+          <button
+            type="button"
+            className="ghost row-action-btn"
+            onClick={split}
+            disabled={caption.words.length < 2 || !caption.words[0].tokenId}
+            title="Split caption at text cursor (or press S)"
+          >
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M16 3h5v5M4 20L21 3M21 16v5h-5M15 15l6 6M4 4l5 5"/>
+            </svg>
             Split
           </button>
-          <button className="ghost" onClick={() => mergeWithNext(caption.id)} disabled={!hasNext || !caption.words[0].tokenId} title="Join with the next caption">
+
+          <button
+            type="button"
+            className="ghost row-action-btn"
+            onClick={() => mergeWithNext(caption.id)}
+            disabled={!hasNext || !caption.words[0].tokenId}
+            title="Merge with next caption line"
+          >
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M8 3v3a2 2 0 0 1-2 2H3m18 0h-3a2 2 0 0 1-2-2V3m0 18v-3a2 2 0 0 1 2-2h3M3 16h3a2 2 0 0 1 2 2v3"/>
+            </svg>
             Merge
           </button>
-          <button className="ghost" onClick={() => deleteCaption(caption.id)} disabled={!caption.words[0].tokenId} title="Delete this caption">
-            Delete
+
+          <button
+            type="button"
+            className="ghost row-action-btn delete"
+            onClick={() => deleteCaption(caption.id)}
+            disabled={!caption.words[0].tokenId}
+            title="Delete this caption line"
+          >
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <line x1="18" y1="6" x2="6" y2="18"/>
+              <line x1="6" y1="6" x2="18" y2="18"/>
+            </svg>
           </button>
         </div>
       </div>
+
       <textarea
         ref={areaRef}
         rows={1}
@@ -92,26 +147,42 @@ function RowView({ caption, active, hasNext, doubtful, seek }: RowProps) {
             e.currentTarget.blur();
           }
         }}
+        className="caption-textarea"
+        placeholder="Type caption text here..."
       />
+
       {active && caption.words[0].tokenId && (
-        <div className="chips" role="group" aria-label="Style one word">
-          {caption.words.map((word) => (
-            <button
-              key={word.tokenId}
-              className={`${word.tokenId === selected ? 'on' : ''} ${word.style ? 'styled' : ''}`}
-              aria-pressed={word.tokenId === selected}
-              onClick={() => selectToken(word.tokenId ?? null)}
-            >
-              {word.text}
-            </button>
-          ))}
+        <div className="chips-container">
+          <span className="chips-label">Click word to customize:</span>
+          <div className="chips" role="group" aria-label="Style one word">
+            {caption.words.map((word) => (
+              <button
+                key={word.tokenId}
+                type="button"
+                className={`word-chip ${word.tokenId === selected ? 'on' : ''} ${word.style ? 'styled' : ''}`}
+                aria-pressed={word.tokenId === selected}
+                onClick={() => selectToken(word.tokenId === selected ? null : (word.tokenId ?? null))}
+                title={word.style ? 'Custom styled word (click to edit)' : 'Click to customize font/color/size'}
+              >
+                {word.text}
+              </button>
+            ))}
+          </div>
         </div>
       )}
+
       {doubtful && (
         <div className="check">
-          Check: {doubtful}
-          <button className="ghost" onClick={() => markChecked(tokenIds(caption))}>
-            Looks right
+          <span className="check-text">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <circle cx="12" cy="12" r="10"/>
+              <line x1="12" y1="8" x2="12" y2="12"/>
+              <line x1="12" y1="16" x2="12.01" y2="16"/>
+            </svg>
+            Review AI spelling: <strong>{doubtful}</strong>
+          </span>
+          <button type="button" className="ghost check-btn" onClick={() => markChecked(tokenIds(caption))}>
+            Looks right ✓
           </button>
         </div>
       )}
@@ -123,13 +194,12 @@ export function CaptionList({ captions, seek }: { captions: Caption[]; seek: (t:
   const gaps = useEditor((s) => s.project?.speechGaps ?? []);
   const tokens = useEditor((s) => s.doc?.tokens);
   const script = useEditor((s) => s.doc?.script);
+  const [filterQuery, setFilterQuery] = useState('');
 
   const doubts = useMemo(() => {
     const low = new Map<string, string>();
     if (!tokens || !script || script === 'translated') return low;
     const byId = new Map(tokens.map((t) => [t.id, t]));
-    // Newer projects know which words the listeners disagreed on. Older ones have only
-    // the timing score, which also flags many correct words.
     const compared = tokens.some((t) => t.unsure !== undefined);
     for (const caption of captions) {
       const words = caption.words.flatMap((w) => {
@@ -141,6 +211,7 @@ export function CaptionList({ captions, seek }: { captions: Caption[]; seek: (t:
     }
     return low;
   }, [tokens, script, captions]);
+
   const [activeId, setActiveId] = useState<string | null>(null);
 
   useEffect(() => {
@@ -158,27 +229,79 @@ export function CaptionList({ captions, seek }: { captions: Caption[]; seek: (t:
     if (after) seek(captionStart(after) + 0.001);
   };
 
+  const filteredCaptions = filterQuery.trim()
+    ? captions.filter((c) =>
+        c.words
+          .map((w) => w.text)
+          .join(' ')
+          .toLowerCase()
+          .includes(filterQuery.toLowerCase())
+      )
+    : captions;
+
   return (
     <aside className="list">
       <div className="list-head">
-        <span>Captions {captions.length}</span>
+        <div className="list-title-wrap">
+          <span className="list-title">Captions</span>
+          <span className="list-count-badge">{captions.length}</span>
+        </div>
+
         {doubts.size > 0 ? (
-          <button id="next-check" onClick={nextDoubt}>
-            Check {doubts.size} next
+          <button type="button" id="next-check" className="check-doubt-btn" onClick={nextDoubt} title="Jump to next word needing review">
+            Review {doubts.size}
           </button>
         ) : (
-          <span className="all-clear">All checked</span>
+          <span className="all-clear">✓ All verified</span>
         )}
       </div>
+
+      {/* Quick Search across captions */}
+      {captions.length > 5 && (
+        <div className="list-search-wrap">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <circle cx="11" cy="11" r="8" />
+            <line x1="21" y1="21" x2="16.65" y2="16.65" />
+          </svg>
+          <input
+            type="text"
+            placeholder="Search spoken words..."
+            value={filterQuery}
+            onChange={(e) => setFilterQuery(e.target.value)}
+            className="list-search-input"
+          />
+          {filterQuery && (
+            <button type="button" className="ghost clear-search-btn" onClick={() => setFilterQuery('')}>
+              ×
+            </button>
+          )}
+        </div>
+      )}
+
       {gaps.map((gap) => (
         <div className="gap-warning" key={gap.start}>
-          Speech may be missing around {stamp(gap.start)} – {stamp(gap.end)}.
-          <button onClick={() => seek(gap.start)}>Listen to this part</button>
+          <div className="gap-warning-header">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z" />
+              <line x1="12" y1="9" x2="12" y2="13" />
+              <line x1="12" y1="17" x2="12.01" y2="17" />
+            </svg>
+            <span>Possible speech gap ({stamp(gap.start)} – {stamp(gap.end)})</span>
+          </div>
+          <button type="button" onClick={() => seek(gap.start)}>Listen to this part</button>
         </div>
       ))}
+
       <div className="rows">
-        {captions.map((caption, i) => (
-          <Row key={caption.id} caption={caption} active={caption.id === activeId} hasNext={i < captions.length - 1} doubtful={doubts.get(caption.id) ?? ''} seek={seek} />
+        {filteredCaptions.map((caption, i) => (
+          <Row
+            key={caption.id}
+            caption={caption}
+            active={caption.id === activeId}
+            hasNext={i < captions.length - 1}
+            doubtful={doubts.get(caption.id) ?? ''}
+            seek={seek}
+          />
         ))}
       </div>
     </aside>

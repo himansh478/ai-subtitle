@@ -407,15 +407,94 @@ export function Preview({
         </div>
       </div>
       <div className="transport">
-        <button onClick={() => previewToggle(videoRef.current)} aria-label={playing ? 'Pause' : 'Play'}>
-          {playing ? 'Pause' : 'Play'}
-        </button>
-        <span className="clock" ref={clockRef}>
-          0:00.00
-        </span>
-        <button className={safe ? '' : 'ghost'} aria-pressed={safe} onClick={() => setSafe(!safe)}>
-          Safe zone
-        </button>
+        <div className="transport-controls">
+          <button
+            type="button"
+            className="ghost transport-step-btn"
+            onClick={() => {
+              if (videoRef.current) {
+                videoRef.current.currentTime = Math.max(0, videoRef.current.currentTime - 1);
+                playhead.set(videoRef.current.currentTime);
+                redraw();
+              }
+            }}
+            title="Step back 1s (Left Arrow / J)"
+            aria-label="Step back 1 second"
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2">
+              <polygon points="11 19 2 12 11 5 11 19" />
+              <polygon points="22 19 13 12 22 5 22 19" />
+            </svg>
+            <span>-1s</span>
+          </button>
+
+          <button
+            type="button"
+            className={`transport-play-btn ${playing ? 'playing' : ''}`}
+            onClick={() => previewToggle(videoRef.current)}
+            aria-label={playing ? 'Pause' : 'Play'}
+            title={playing ? 'Pause (Space)' : 'Play (Space)'}
+          >
+            {playing ? (
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+                <rect x="6" y="4" width="4" height="16" rx="1" />
+                <rect x="14" y="4" width="4" height="16" rx="1" />
+              </svg>
+            ) : (
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style={{ marginLeft: '2px' }}>
+                <polygon points="5 3 19 12 5 21 5 3" />
+              </svg>
+            )}
+          </button>
+
+          <button
+            type="button"
+            className="ghost transport-step-btn"
+            onClick={() => {
+              if (videoRef.current) {
+                videoRef.current.currentTime = Math.min(videoRef.current.duration || 9999, videoRef.current.currentTime + 1);
+                playhead.set(videoRef.current.currentTime);
+                redraw();
+              }
+            }}
+            title="Step forward 1s (Right Arrow / L)"
+            aria-label="Step forward 1 second"
+          >
+            <span>+1s</span>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2">
+              <polygon points="13 19 22 12 13 5 13 19" />
+              <polygon points="2 19 11 12 2 5 2 19" />
+            </svg>
+          </button>
+        </div>
+
+        <div className="transport-time-pill" title="Current Playhead / Video Timecode">
+          <span className={`time-dot ${playing ? 'live' : ''}`} />
+          <span className="clock" ref={clockRef}>
+            0:00.00
+          </span>
+        </div>
+
+        <div className="transport-extras">
+          <div className="transport-res-badge" title="Canvas Native Resolution">
+            {size.width}×{size.height} {size.height > size.width ? '9:16' : '16:9'}
+          </div>
+
+          <button
+            type="button"
+            className={`transport-safe-btn ${safe ? 'active' : 'ghost'}`}
+            aria-pressed={safe}
+            onClick={() => setSafe(!safe)}
+            title="Toggle TikTok / Reels Safe Zones"
+          >
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <rect x="3" y="3" width="18" height="18" rx="2" />
+              <line x1="3" y1="9" x2="21" y2="9" strokeDasharray="2 2" />
+              <line x1="3" y1="15" x2="21" y2="15" strokeDasharray="2 2" />
+            </svg>
+            <span>Safe zone</span>
+          </button>
+        </div>
       </div>
     </section>
   );

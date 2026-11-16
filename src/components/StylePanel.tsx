@@ -10,21 +10,49 @@ import { FixPanel } from './FixPanel';
 import { TemplateGallery } from './TemplateGallery';
 
 const TABS = [
-  { id: 'style', label: 'Style' },
-  { id: 'adjust', label: 'Adjust' },
-  { id: 'word', label: 'Word' },
-  { id: 'review', label: 'Review' },
+  { id: 'style', label: 'Style', icon: 'palette' },
+  { id: 'adjust', label: 'Adjust', icon: 'sliders' },
+  { id: 'word', label: 'Word', icon: 'type' },
+  { id: 'review', label: 'Review', icon: 'sparkles' },
 ] as const;
 
 const opaque = (color: string) => color.slice(0, 7);
 
-function Slider({ label, min, max, step = 1, value, onChange }: { label: string; min: number; max: number; step?: number; value: number; onChange: (v: number) => void }) {
+function Slider({
+  label,
+  min,
+  max,
+  step = 1,
+  value,
+  unit = '',
+  onChange,
+}: {
+  label: string;
+  min: number;
+  max: number;
+  step?: number;
+  value: number;
+  unit?: string;
+  onChange: (v: number) => void;
+}) {
   return (
-    <label className="field">
-      {label}
+    <label className="field slider-field">
+      <div className="slider-label-row">
+        <span>{label}</span>
+        <span className="slider-val-badge">
+          {value}
+          {unit}
+        </span>
+      </div>
       <div className="pair">
-        <input type="range" min={min} max={max} step={step} value={value} onChange={(e) => onChange(Number(e.target.value))} />
-        <span style={{ minWidth: 34, textAlign: 'right' }}>{value}</span>
+        <input
+          type="range"
+          min={min}
+          max={max}
+          step={step}
+          value={value}
+          onChange={(e) => onChange(Number(e.target.value))}
+        />
       </div>
     </label>
   );
@@ -32,9 +60,13 @@ function Slider({ label, min, max, step = 1, value, onChange }: { label: string;
 
 function Color({ label, value, onChange }: { label: string; value: string; onChange: (v: string) => void }) {
   return (
-    <label className="field">
-      {label}
-      <input type="color" value={opaque(value)} onChange={(e) => onChange(e.target.value)} />
+    <label className="field color-field">
+      <span className="color-label">{label}</span>
+      <div className="color-picker-wrap">
+        <span className="color-preview-dot" style={{ backgroundColor: opaque(value) }} />
+        <span className="color-hex-text">{value.toUpperCase()}</span>
+        <input type="color" value={opaque(value)} onChange={(e) => onChange(e.target.value)} />
+      </div>
     </label>
   );
 }
@@ -111,10 +143,50 @@ export function StylePanel({ seek }: { seek: (t: number) => void }) {
 
   return (
     <aside className="style">
-      <div className="tabs" role="tablist">
-        {TABS.map(({ id, label }) => (
-          <button key={id} role="tab" aria-selected={tab === id} className={tab === id ? 'on' : ''} onClick={() => setTab(id)}>
-            {label}
+      <div className="tabs style-panel-tabs" role="tablist">
+        {TABS.map(({ id, label, icon }) => (
+          <button
+            key={id}
+            role="tab"
+            aria-selected={tab === id}
+            className={`tab-btn ${tab === id ? 'on' : ''}`}
+            onClick={() => setTab(id)}
+          >
+            {icon === 'palette' && (
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <circle cx="13.5" cy="6.5" r=".5" fill="currentColor"/>
+                <circle cx="17.5" cy="10.5" r=".5" fill="currentColor"/>
+                <circle cx="8.5" cy="7.5" r=".5" fill="currentColor"/>
+                <circle cx="6.5" cy="12.5" r=".5" fill="currentColor"/>
+                <path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.926 0 1.648-.746 1.648-1.688 0-.437-.18-.835-.437-1.125-.29-.289-.438-.652-.438-1.125a1.64 1.64 0 0 1 1.668-1.668h1.996c3.051 0 5.555-2.503 5.555-5.554C21.992 6.445 17.555 2 12 2z"/>
+              </svg>
+            )}
+            {icon === 'sliders' && (
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <line x1="4" y1="21" x2="4" y2="14"/>
+                <line x1="4" y1="10" x2="4" y2="3"/>
+                <line x1="12" y1="21" x2="12" y2="12"/>
+                <line x1="12" y1="8" x2="12" y2="3"/>
+                <line x1="20" y1="21" x2="20" y2="16"/>
+                <line x1="20" y1="12" x2="20" y2="3"/>
+                <line x1="1" y1="14" x2="7" y2="14"/>
+                <line x1="9" y1="8" x2="15" y2="8"/>
+                <line x1="17" y1="16" x2="23" y2="16"/>
+              </svg>
+            )}
+            {icon === 'type' && (
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <polyline points="4 7 4 4 20 4 20 7"/>
+                <line x1="9" y1="20" x2="15" y2="20"/>
+                <line x1="12" y1="4" x2="12" y2="20"/>
+              </svg>
+            )}
+            {icon === 'sparkles' && (
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="m12 3-1.9 5.8a2 2 0 0 1-1.3 1.3L3 12l5.8 1.9a2 2 0 0 1 1.3 1.3L12 21l1.9-5.8a2 2 0 0 1 1.3-1.3L21 12l-5.8-1.9a2 2 0 0 1-1.3-1.3L12 3z"/>
+              </svg>
+            )}
+            <span>{label}</span>
           </button>
         ))}
       </div>

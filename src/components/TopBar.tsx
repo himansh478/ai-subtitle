@@ -24,49 +24,148 @@ export function TopBar({ onExport }: { onExport: (kind: ExportKind) => void }) {
 
   return (
     <header className="topbar">
-      <Link href="/" className="ghost" aria-label="Back to projects">
-        <button className="ghost">Projects</button>
+      {/* Back to Projects */}
+      <Link href="/" className="topbar-back-btn" title="Back to Projects">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M19 12H5M12 19l-7-7 7-7"/>
+        </svg>
+        <span>Projects</span>
       </Link>
-      <span className="name">{project.name}</span>
-      <button className="ghost" onClick={undo} disabled={!canUndo} title="Undo (Ctrl+Z)">
-        Undo
-      </button>
-      <button className="ghost" onClick={redo} disabled={!canRedo} title="Redo (Ctrl+Shift+Z)">
-        Redo
-      </button>
+
+      {/* Project Name & Status */}
+      <div className="topbar-project-info" title={project.name}>
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+          <polygon points="5 3 19 12 5 21 5 3"/>
+        </svg>
+        <span className="topbar-project-name">{project.name}</span>
+        <span className="topbar-saved-badge" title="Changes are automatically saved to your browser">
+          <span className="saved-dot" />
+          <span>Saved</span>
+        </span>
+      </div>
+
+      <div className="topbar-divider" />
+
+      {/* History Controls */}
+      <div className="topbar-history-group">
+        <button
+          type="button"
+          className="ghost icon-btn"
+          onClick={undo}
+          disabled={!canUndo}
+          title="Undo (Ctrl+Z)"
+        >
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <path d="M3 7v6h6"/>
+            <path d="M21 17a9 9 0 0 0-9-9 9 9 0 0 0-6 2.3L3 13"/>
+          </svg>
+        </button>
+        <button
+          type="button"
+          className="ghost icon-btn"
+          onClick={redo}
+          disabled={!canRedo}
+          title="Redo (Ctrl+Shift+Z or Ctrl+Y)"
+        >
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <path d="M21 7v6h-6"/>
+            <path d="M3 17a9 9 0 0 1 9-9 9 9 0 0 1 6 2.3l3 2.7"/>
+          </svg>
+        </button>
+      </div>
+
+      {/* Framing & Person Modes */}
       <VideoModes />
+
       <div className="spacer" />
-      {accountsOn && (
-        <Link href="/account">
-          <button className="ghost">Account</button>
-        </Link>
-      )}
+
+      {/* Language / Script Switcher (English, Hinglish, Hindi) */}
       {SCRIPTS[project.language].length > 1 && (
-        <div className="segmented" role="group" aria-label="Caption language">
+        <div className="segmented topbar-scripts" role="group" aria-label="Caption language">
           {SCRIPTS[project.language].map((s) => (
-            <button key={s.id} className={s.id === script ? 'on' : ''} aria-pressed={s.id === script} onClick={() => setScript(s.id)}>
+            <button
+              key={s.id}
+              type="button"
+              className={s.id === script ? 'on' : ''}
+              aria-pressed={s.id === script}
+              onClick={() => setScript(s.id)}
+            >
               {s.label}
             </button>
           ))}
         </div>
       )}
+
+      {/* Account Link */}
+      {accountsOn && (
+        <Link href="/account" className="ghost topbar-account-link" title="My Account & Usage">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
+            <circle cx="12" cy="7" r="4"/>
+          </svg>
+          <span className="account-text">Account</span>
+        </Link>
+      )}
+
+      {/* Export Menu */}
       <div className="menu">
-        <button className="primary" aria-expanded={open} onClick={() => setOpen(!open)}>
-          Export
+        <button
+          type="button"
+          className="primary export-btn"
+          aria-expanded={open}
+          onClick={() => setOpen(!open)}
+        >
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+            <polyline points="7 10 12 15 17 10"/>
+            <line x1="12" y1="15" x2="12" y2="3"/>
+          </svg>
+          <span>Export</span>
+          <svg className={`export-chevron ${open ? 'open' : ''}`} width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <polyline points="6 9 12 15 18 9" />
+          </svg>
         </button>
+
         {open && (
-          <div className="menu-list">
-            <button onClick={() => pick('mp4')}>
-              Video with captions
-              <small>MP4, up to 4K</small>
+          <div className="menu-list export-menu-dropdown">
+            <button type="button" onClick={() => pick('mp4')} className="export-menu-item">
+              <div className="export-menu-icon">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <polygon points="23 7 16 12 23 17 23 7"/>
+                  <rect x="1" y="5" width="15" height="14" rx="2" ry="2"/>
+                </svg>
+              </div>
+              <div className="export-menu-text">
+                <b>Video with captions</b>
+                <small>MP4 with kinetic subtitles (1080p & 4K, 60fps)</small>
+              </div>
             </button>
-            <button onClick={() => pick('overlay')}>
-              Transparent captions
-              <small>MOV with alpha, for Premiere</small>
+
+            <button type="button" onClick={() => pick('overlay')} className="export-menu-item">
+              <div className="export-menu-icon">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/>
+                </svg>
+              </div>
+              <div className="export-menu-text">
+                <b>Transparent captions overlay</b>
+                <small>MOV with alpha channel for Premiere Pro / After Effects</small>
+              </div>
             </button>
-            <button onClick={() => pick('srt')}>
-              Subtitle file
-              <small>SRT, for Premiere and YouTube</small>
+
+            <button type="button" onClick={() => pick('srt')} className="export-menu-item">
+              <div className="export-menu-icon">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                  <polyline points="14 2 14 8 20 8"/>
+                  <line x1="16" y1="13" x2="8" y2="13"/>
+                  <line x1="16" y1="17" x2="8" y2="17"/>
+                </svg>
+              </div>
+              <div className="export-menu-text">
+                <b>Subtitle file (SRT)</b>
+                <small>Clean word-timed SRT for YouTube & social platforms</small>
+              </div>
             </button>
           </div>
         )}
