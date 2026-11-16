@@ -1,4 +1,4 @@
-import type { Style, WordStyle } from '@/engine/types';
+import type { BlockStyle, Style, WordStyle } from '@/engine/types';
 
 /** Face positions at one moment, as shares of the frame. */
 export type FaceSample = { time: number; boxes: { x: number; y: number; width: number; height: number }[] };
@@ -41,6 +41,8 @@ export type Doc = {
   script: ScriptId;
   templateId: string;
   overrides: Partial<Style>;
+  /** Per-caption block custom overrides keyed by caption ID */
+  captionStyles?: Record<string, BlockStyle>;
   maxWords: number;
   /** Seconds added to all captions */
   offset: number;

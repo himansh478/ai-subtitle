@@ -9,7 +9,7 @@ import { exportOverlay, sourceFrameRate } from '@/engine/overlay';
 import { drawCutout, PersonMask } from '@/engine/segment';
 import { createStudio, type Studio } from '@/engine/studio';
 import { faceTrack } from '@/engine/tracking';
-import type { Caption, Style } from '@/engine/types';
+import { captionEnd, captionStart, type Caption, type Style } from '@/engine/types';
 import { currentWatermark } from '@/lib/account';
 import { api } from '@/lib/auth';
 import { openExport, readExport } from '@/lib/storage';
@@ -63,7 +63,7 @@ export function Preview({
   const clockRef = useRef<HTMLSpanElement>(null);
   const studioRef = useRef<Studio | null>(null);
   const captionsRef = useRef(captions);
-  const pressRef = useRef<{ y: number; tokenId?: string; moved: boolean } | null>(null);
+  const pressRef = useRef<{ y: number; tokenId?: string; captionId?: string; moved: boolean } | null>(null);
   const planRef = useRef<{ key: unknown[]; at: (caption: Caption, time: number) => number } | null>(null);
   const trackRef = useRef<{ faces: unknown; at: ReturnType<typeof faceTrack> } | null>(null);
   const cropRef = useRef<{ faces: unknown; crop: Crop } | null>(null);
@@ -75,7 +75,7 @@ export function Preview({
   const [centred, setCentred] = useState(false);
 
   const families = useEditor((s) => (s.doc ? neededFamilies(s.doc).join('|') : ''));
-  const behind = useEditor((s) => !!s.doc?.behindPerson);
+  const behind = useEditor((s) => !!s.doc?.behindPerson || Object.values(s.doc?.captionStyles ?? {}).some((c) => !!c.behindPerson));
   const blend = useEditor((s) => (s.doc ? resolveStyle(s.doc).blend : 'normal'));
   const videoWidth = useEditor((s) => (s.doc?.reframe && s.project ? 100 / cropShare(s.project.media.width, s.project.media.height) : null));
 
@@ -96,34 +96,55 @@ export function Preview({
     return cropRef.current.crop;
   };
 
-  /** The style for a caption at a time, including any move off a face. */
+  /** The style for a caption at a time, including per-block overrides and face avoidance. */
   const styler = (): ((caption: Caption, time: number) => Style) => {
     const { doc, project } = useEditor.getState();
     const studio = studioRef.current;
-    const style = resolveStyle(doc!);
+    const baseStyle = resolveStyle(doc!);
     const faces = project?.faces;
-    if (!studio || !faces?.length) return () => style;
+
+    const forCaption = (caption: Caption): Style => {
+      const override = doc?.captionStyles?.[caption.id];
+      if (!override) return baseStyle;
+      return {
+        ...baseStyle,
+        ...override,
+        stroke: override.stroke !== undefined ? override.stroke : baseStyle.stroke,
+        shadow: override.shadow !== undefined ? override.shadow : baseStyle.shadow,
+      };
+    };
+
+    if (!studio || !faces?.length) return (caption) => forCaption(caption);
 
     const crop = currentCrop();
     if (doc?.followFace && !crop) {
       if (trackRef.current?.faces !== faces) trackRef.current = { faces, at: faceTrack(faces) };
       const { at } = trackRef.current;
-      return (_caption, time) => {
+      return (caption, time) => {
+        const style = forCaption(caption);
         const { dx, dy } = at(time);
-        return { ...style, anchorX: Math.min(0.92, Math.max(0.08, style.anchorX + dx)), anchorY: Math.min(0.95, Math.max(0.05, style.anchorY + dy)) };
+        return {
+          ...style,
+          anchorX: Math.min(0.92, Math.max(0.08, style.anchorX + dx)),
+          anchorY: Math.min(0.95, Math.max(0.05, style.anchorY + dy)),
+        };
       };
     }
 
-    if (!doc?.avoidFaces) return () => style;
+    if (!doc?.avoidFaces) return (caption) => forCaption(caption);
 
     const key = [doc, captionsRef.current, faces];
     if (!planRef.current || planRef.current.key.some((part, i) => part !== key[i])) {
       const measure = (caption: Caption, s: Style) => studio.renderer.measure(caption, s);
       const seen = crop ? framedFaces(faces, crop.leftAt, crop.share) : faces;
-      planRef.current = { key, at: planPositions(captionsRef.current, style, seen, measure, size.height > size.width) };
+      planRef.current = { key, at: planPositions(captionsRef.current, baseStyle, seen, measure, size.height > size.width) };
     }
     const { at } = planRef.current;
-    return (caption, time) => ({ ...style, anchorY: at(caption, time) });
+    return (caption, time) => {
+      const style = forCaption(caption);
+      const anchorY = doc?.captionStyles?.[caption.id]?.anchorY !== undefined ? style.anchorY : at(caption, time);
+      return { ...style, anchorY };
+    };
   };
 
   const draw = (time: number) => {
@@ -141,9 +162,22 @@ export function Preview({
     if (crop && el) el.style.left = `${(-view.left / view.share) * 100}%`;
 
     const person = personRef.current;
-    if (doc.behindPerson && person && el && el.readyState >= 2) {
+    const currentCaption = captionsRef.current.find(
+      (c) => time >= captionStart(c) && time < captionEnd(c)
+    );
+    const isBehind = currentCaption
+      ? (doc.captionStyles?.[currentCaption.id]?.behindPerson ?? !!doc.behindPerson)
+      : !!doc.behindPerson;
+
+    if (isBehind && person && el && el.readyState >= 2) {
       const { ck, surface } = studio;
-      const frame = surface.makeImageFromTextureSource(el as unknown as TextureSource, { width: el.videoWidth, height: el.videoHeight, alphaType: ck.AlphaType.Premul, colorType: ck.ColorType.RGBA_8888, colorSpace: ck.ColorSpace.SRGB });
+      const frame = surface.makeImageFromTextureSource(el as unknown as TextureSource, {
+        width: el.videoWidth,
+        height: el.videoHeight,
+        alphaType: ck.AlphaType.Premul,
+        colorType: ck.ColorType.RGBA_8888,
+        colorSpace: ck.ColorSpace.SRGB,
+      });
       const mask = person.read(ck, el);
       if (frame && mask) drawCutout(ck, canvas, frame, mask, view, ck.LTRBRect(0, 0, size.width, size.height));
       mask?.delete();
@@ -272,10 +306,15 @@ export function Preview({
       canvasEl.height = target.height;
       try {
         const studio = await createStudio(canvasEl, target.width, target.height);
-        const person = doc.behindPerson ? await PersonMask.create() : null;
+        const anyBehind = !!doc.behindPerson || Object.values(doc.captionStyles ?? {}).some((s) => !!s.behindPerson);
+        const person = anyBehind ? await PersonMask.create() : null;
+        const isBehindAt = (time: number) => {
+          const cap = captionsRef.current.find((c) => time >= captionStart(c) && time < captionEnd(c));
+          return cap ? (doc.captionStyles?.[cap.id]?.behindPerson ?? !!doc.behindPerson) : !!doc.behindPerson;
+        };
         const watermark = await currentWatermark();
         const writable = await openExport(project.id, 'export.mp4');
-        const job = { video, captions: captionsRef.current, styleAt: styler(), writable, settings, person, watermark, crop: currentCrop(), onProgress };
+        const job = { video, captions: captionsRef.current, styleAt: styler(), writable, settings, person, isBehindAt, watermark, crop: currentCrop(), onProgress };
         const result = await exportVideo(studio, canvasEl, job);
         person?.close();
         studio.renderer.dispose();
@@ -332,10 +371,11 @@ export function Preview({
     const hit = studio.renderer.locate(captionsRef.current, time, (caption) => styleAt(caption, time), x, y);
     if (!hit) {
       useEditor.getState().selectToken(null);
+      useEditor.getState().selectCaption(null);
       previewToggle(videoRef.current);
       return;
     }
-    pressRef.current = { y: e.clientY, tokenId: hit.caption.words[hit.index].tokenId, moved: false };
+    pressRef.current = { y: e.clientY, tokenId: hit.caption.words[hit.index].tokenId, captionId: hit.caption.id, moved: false };
     e.currentTarget.setPointerCapture(e.pointerId);
   };
 
@@ -343,7 +383,10 @@ export function Preview({
     const press = pressRef.current;
     pressRef.current = null;
     setCentred(false);
-    if (press && !press.moved && press.tokenId) useEditor.getState().selectToken(press.tokenId);
+    if (press && !press.moved) {
+      if (press.captionId) useEditor.getState().selectCaption(press.captionId);
+      if (press.tokenId) useEditor.getState().selectToken(press.tokenId);
+    }
   };
 
   const move = (e: PointerEvent<HTMLCanvasElement>) => {
@@ -355,7 +398,12 @@ export function Preview({
     const anchorY = Math.min(0.95, Math.max(0.05, (e.clientY - box.top) / box.height));
     const snapped = Math.abs(anchorY - CENTRE) < CENTRE_SNAP;
     setCentred(snapped);
-    useEditor.getState().setStyle({ anchorY: snapped ? CENTRE : Math.round(anchorY * 1000) / 1000 }, 'position');
+    const newY = snapped ? CENTRE : Math.round(anchorY * 1000) / 1000;
+    if (press.captionId) {
+      useEditor.getState().setCaptionStyle(press.captionId, { anchorY: newY }, 'block-y');
+    } else {
+      useEditor.getState().setStyle({ anchorY: newY }, 'position');
+    }
   };
 
   const ratio = size.width / size.height;

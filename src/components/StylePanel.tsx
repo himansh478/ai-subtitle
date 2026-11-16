@@ -2,8 +2,9 @@
 
 import { useEffect, useState, type ReactNode } from 'react';
 import { FONT_FAMILIES, hasDevanagari, weightsOf } from '@/engine/fonts';
+import { buildCaptions } from '@/engine/group';
 import { renderThumbnails } from '@/engine/thumbnails';
-import type { FontWeightName, Style } from '@/engine/types';
+import { captionEnd, captionStart, type FontWeightName, type Style } from '@/engine/types';
 import { tokenText } from '@/lib/project';
 import { resolveStyle, useEditor } from '@/state/editor';
 import { FixPanel } from './FixPanel';
@@ -12,6 +13,7 @@ import { TemplateGallery } from './TemplateGallery';
 const TABS = [
   { id: 'style', label: 'Style', icon: 'palette' },
   { id: 'adjust', label: 'Adjust', icon: 'sliders' },
+  { id: 'block', label: 'Block', icon: 'layers' },
   { id: 'word', label: 'Word', icon: 'type' },
   { id: 'review', label: 'Review', icon: 'sparkles' },
 ] as const;
@@ -112,6 +114,192 @@ function WordControls() {
   );
 }
 
+function BlockControls({ seek }: { seek: (t: number) => void }) {
+  const doc = useEditor((s) => s.doc);
+  const selectedCaption = useEditor((s) => s.selectedCaption);
+  const { selectCaption, setCaptionStyle } = useEditor.getState();
+
+  if (!doc) return null;
+  const captions = buildCaptions(doc);
+  if (!captions.length) return <p className="hint">No captions available in this project.</p>;
+
+  const selected = captions.find((c) => c.id === selectedCaption) ?? captions[0];
+  const blockIndex = captions.findIndex((c) => c.id === selected.id) + 1;
+  const blockStyle = doc.captionStyles?.[selected.id] ?? {};
+  const base = resolveStyle(doc);
+  const fullText = selected.words.map((w) => w.text).join(' ');
+  const startTime = captionStart(selected);
+  const endTime = captionEnd(selected);
+
+  return (
+    <div className="block-inspector">
+      {/* Block Selector */}
+      <label className="field block-selector-field">
+        <span className="field-title">Select Block</span>
+        <select
+          value={selected.id}
+          onChange={(e) => {
+            selectCaption(e.target.value);
+            const targetCap = captions.find((c) => c.id === e.target.value);
+            if (targetCap) seek(captionStart(targetCap) + 0.001);
+          }}
+          className="block-select-dropdown"
+        >
+          {captions.map((c, i) => (
+            <option key={c.id} value={c.id}>
+              Block {i + 1}: &quot;{c.words.map((w) => w.text).join(' ').slice(0, 26)}&quot;
+              {doc.captionStyles?.[c.id] ? ' ★ (Customized)' : ''}
+            </option>
+          ))}
+        </select>
+      </label>
+
+      {/* Selected Block Info Card */}
+      <div className="block-meta-card">
+        <div className="block-meta-header">
+          <span className="block-number-badge">BLOCK {blockIndex} OF {captions.length}</span>
+          <button
+            type="button"
+            className="block-jump-btn"
+            onClick={() => seek(startTime + 0.001)}
+            title="Click to jump playhead here"
+          >
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor">
+              <polygon points="5 3 19 12 5 21 5 3" />
+            </svg>
+            <span>{startTime.toFixed(2)}s – {endTime.toFixed(2)}s</span>
+          </button>
+        </div>
+        <p className="block-text-preview">&ldquo;{fullText}&rdquo;</p>
+      </div>
+
+      {/* Feature 1: Behind The Person (Strictly for this block!) */}
+      <div className="block-section">
+        <div className="section-title">Cutout & Layering</div>
+        <label className="block-toggle-row">
+          <div className="toggle-info">
+            <span className="toggle-title">Behind Person Cutout</span>
+            <small className="toggle-desc">
+              Sirf yeh Block {blockIndex} speaker ke peeche se guzrega. Baaki blocks normal rahenge.
+            </small>
+          </div>
+          <input
+            type="checkbox"
+            checked={!!blockStyle.behindPerson}
+            onChange={(e) =>
+              setCaptionStyle(selected.id, { behindPerson: e.target.checked }, 'block-behind')
+            }
+          />
+        </label>
+        {blockStyle.behindPerson && (
+          <div className="block-active-badge">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+              <polyline points="20 6 9 17 4 12" />
+            </svg>
+            <span>Behind Person active strictly for Block {blockIndex}</span>
+          </div>
+        )}
+      </div>
+
+      {/* Feature 2: Custom Position (Per-Block!) */}
+      <div className="block-section">
+        <div className="section-title">Vertical Position for this Block</div>
+        <div className="position-preset-grid">
+          <button
+            type="button"
+            className={`preset-btn ${(blockStyle.anchorY ?? base.anchorY) <= 0.25 ? 'on' : ''}`}
+            onClick={() => setCaptionStyle(selected.id, { anchorY: 0.15 }, 'block-y')}
+          >
+            Top (15%)
+          </button>
+          <button
+            type="button"
+            className={`preset-btn ${Math.abs((blockStyle.anchorY ?? base.anchorY) - 0.5) < 0.1 ? 'on' : ''}`}
+            onClick={() => setCaptionStyle(selected.id, { anchorY: 0.50 }, 'block-y')}
+          >
+            Middle (50%)
+          </button>
+          <button
+            type="button"
+            className={`preset-btn ${(blockStyle.anchorY ?? base.anchorY) >= 0.70 ? 'on' : ''}`}
+            onClick={() => setCaptionStyle(selected.id, { anchorY: 0.80 }, 'block-y')}
+          >
+            Bottom (80%)
+          </button>
+        </div>
+
+        <Slider
+          label="Custom Height"
+          min={5}
+          max={95}
+          unit="%"
+          value={Math.round((blockStyle.anchorY ?? base.anchorY) * 100)}
+          onChange={(v) => setCaptionStyle(selected.id, { anchorY: v / 100 }, 'block-y')}
+        />
+      </div>
+
+      {/* Feature 3: Custom Styling (Per-Block!) */}
+      <div className="block-section">
+        <div className="section-title">Colors & Typography for this Block</div>
+        <Color
+          label="Text Color"
+          value={blockStyle.color ?? base.color}
+          onChange={(color) => setCaptionStyle(selected.id, { color }, 'block-color')}
+        />
+        <Color
+          label="Spoken Word Highlight"
+          value={blockStyle.activeColor ?? base.activeColor}
+          onChange={(activeColor) => setCaptionStyle(selected.id, { activeColor }, 'block-active-color')}
+        />
+
+        <label className="field">
+          Font Family
+          <select
+            value={blockStyle.fontFamily ?? ''}
+            onChange={(e) => {
+              const family = e.target.value;
+              const weights = weightsOf(family);
+              setCaptionStyle(
+                selected.id,
+                family ? { fontFamily: family, fontWeight: weights[weights.length - 1] } : { fontFamily: undefined, fontWeight: undefined },
+                'block-font'
+              );
+            }}
+          >
+            <option value="">Same as Template ({base.fontFamily})</option>
+            {FONT_FAMILIES.map((family) => (
+              <option key={family} value={family}>
+                {family} {hasDevanagari(family) ? ' (हिन्दी)' : ''}
+              </option>
+            ))}
+          </select>
+        </label>
+
+        <Slider
+          label="Font Size"
+          min={30}
+          max={220}
+          unit="px"
+          value={blockStyle.fontSize ?? base.fontSize}
+          onChange={(fontSize) => setCaptionStyle(selected.id, { fontSize }, 'block-size')}
+        />
+      </div>
+
+      {/* Reset Block */}
+      <div className="block-reset-wrap">
+        <button
+          type="button"
+          disabled={!doc.captionStyles?.[selected.id]}
+          onClick={() => setCaptionStyle(selected.id, null)}
+          className="ghost block-reset-btn"
+        >
+          Reset Block {blockIndex} to Default Template
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function Group({ title, open, children }: { title: string; open?: boolean; children: ReactNode }) {
   return (
     <details className="group" open={open}>
@@ -124,10 +312,15 @@ function Group({ title, open, children }: { title: string; open?: boolean; child
 export function StylePanel({ seek }: { seek: (t: number) => void }) {
   const doc = useEditor((s) => s.doc);
   const selected = useEditor((s) => s.selectedToken);
+  const selectedCaption = useEditor((s) => s.selectedCaption);
   const { setStyle, setMaxWords, setOffset } = useEditor.getState();
   const [tab, setTab] = useState<(typeof TABS)[number]['id']>('style');
   const [thumbs, setThumbs] = useState<Record<string, string>>({});
   const script = doc?.script;
+
+  useEffect(() => {
+    if (selectedCaption) setTab('block');
+  }, [selectedCaption]);
 
   useEffect(() => {
     if (selected) setTab('word');
@@ -174,6 +367,13 @@ export function StylePanel({ seek }: { seek: (t: number) => void }) {
                 <line x1="17" y1="16" x2="23" y2="16"/>
               </svg>
             )}
+            {icon === 'layers' && (
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <polygon points="12 2 2 7 12 12 22 7 12 2" />
+                <polyline points="2 17 12 22 22 17" />
+                <polyline points="2 12 12 17 22 12" />
+              </svg>
+            )}
             {icon === 'type' && (
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                 <polyline points="4 7 4 4 20 4 20 7"/>
@@ -195,6 +395,10 @@ export function StylePanel({ seek }: { seek: (t: number) => void }) {
         <TemplateGallery thumbs={thumbs} />
       ) : tab === 'review' ? (
         <FixPanel seek={seek} />
+      ) : tab === 'block' ? (
+        <div className="tab-body">
+          <BlockControls seek={seek} />
+        </div>
       ) : tab === 'word' ? (
         <div className="tab-body">
           <WordControls />

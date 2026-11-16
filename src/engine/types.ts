@@ -10,6 +10,29 @@ export type WordStyle = {
   scale?: number;
 };
 
+/** One caption block's own custom overrides, on top of the template. */
+export type BlockStyle = {
+  /** Move this specific caption block behind the person */
+  behindPerson?: boolean;
+  /** Custom vertical position for this block (0 = top, 1 = bottom) */
+  anchorY?: number;
+  /** Custom horizontal position for this block (0.5 = center) */
+  anchorX?: number;
+  /** Custom font family */
+  fontFamily?: string;
+  fontWeight?: FontWeightName;
+  /** Custom font size */
+  fontSize?: number;
+  /** Custom text color */
+  color?: string;
+  /** Custom spoken word color */
+  activeColor?: string;
+  /** Custom stroke outline */
+  stroke?: { color: string; width: number } | null;
+  /** Custom shadow */
+  shadow?: { color: string; blur: number; offsetY: number } | null;
+};
+
 export type Word = {
   text: string;
   start: number;

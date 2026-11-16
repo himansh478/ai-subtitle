@@ -20,6 +20,9 @@ type Drag = { id: string; mode: 'move' | 'left' | 'right'; x: number; start: num
 
 export function Timeline({ captions, seek }: { captions: Caption[]; seek: (t: number) => void }) {
   const project = useEditor((s) => s.project);
+  const doc = useEditor((s) => s.doc);
+  const selectedCaption = useEditor((s) => s.selectedCaption);
+  const selectCaption = useEditor((s) => s.selectCaption);
   const retime = useEditor((s) => s.retimeCaption);
   const offset = useEditor((s) => s.doc?.offset ?? 0);
   const [zoom, setZoom] = useState(70);
@@ -215,17 +218,30 @@ export function Timeline({ captions, seek }: { captions: Caption[]; seek: (t: nu
           <div className="caption-track">
             {captions.map((caption, index) => {
               const shown = preview?.id === caption.id ? preview : { start: captionStart(caption), end: captionEnd(caption) };
+              const isSelected = caption.id === selectedCaption;
+              const hasOverride = !!doc?.captionStyles?.[caption.id];
+              const isBehind = doc?.captionStyles?.[caption.id]?.behindPerson;
               return (
                 <div
                   key={caption.id}
-                  className={`block ${caption.id === activeId ? 'active' : ''}`}
+                  className={`block ${caption.id === activeId ? 'active' : ''} ${isSelected ? 'selected' : ''} ${hasOverride ? 'customized' : ''}`}
                   style={{ left: shown.start * zoom, width: Math.max(4, (shown.end - shown.start) * zoom) }}
-                  title={caption.words.map((w) => w.text).join(' ')}
-                  onPointerDown={(e) => begin(e, caption, index, 'move')}
+                  title={`Block ${index + 1}: ${caption.words.map((w) => w.text).join(' ')}${hasOverride ? ' (Customized)' : ''}`}
+                  onPointerDown={(e) => {
+                    selectCaption(caption.id);
+                    begin(e, caption, index, 'move');
+                  }}
                   onDoubleClick={() => seek(captionStart(caption) + 0.001)}
                 >
                   <i className="edge left" onPointerDown={(e) => begin(e, caption, index, 'left')} />
-                  {caption.words.map((w) => w.text).join(' ')}
+                  <span className="block-content">
+                    {hasOverride && (
+                      <span className="block-custom-tag" title={isBehind ? 'Behind Person Active for this block' : 'Custom Style Active'}>
+                        {isBehind ? '👤' : '★'}
+                      </span>
+                    )}
+                    <span className="block-text">{caption.words.map((w) => w.text).join(' ')}</span>
+                  </span>
                   <i className="edge right" onPointerDown={(e) => begin(e, caption, index, 'right')} />
                 </div>
               );

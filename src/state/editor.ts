@@ -3,7 +3,7 @@ import { create } from 'zustand';
 import { applyTextEdit } from '@/engine/diff';
 import { autoBreak, captionRanges, editEnglish, sentenceRanges } from '@/engine/group';
 import { familiesOf, templates } from '@/engine/templates';
-import type { Style, WordStyle } from '@/engine/types';
+import type { BlockStyle, Style, WordStyle } from '@/engine/types';
 import { withTokenText, type Doc, type FaceSample, type Project, type ScriptId, type Token } from '@/lib/project';
 import type { Look } from '@/lib/styles';
 import { findMatches } from '@/lib/review';
@@ -23,6 +23,8 @@ type EditorState = {
   notice: string | null;
   /** The word being styled. Not part of undo. */
   selectedToken: string | null;
+  /** The caption block being styled. Not part of undo. */
+  selectedCaption: string | null;
   /** Free-plan mark on the picture. Comes from the account, not the project. */
   watermark: boolean;
 
@@ -33,6 +35,7 @@ type EditorState = {
   patch(recipe: (doc: Doc) => void): void;
   setNotice(notice: string | null): void;
   selectToken(id: string | null): void;
+  selectCaption(id: string | null): void;
   setWatermark(on: boolean): void;
   setFaces(faces: FaceSample[]): void;
 
@@ -55,6 +58,8 @@ type EditorState = {
   removeWords(ids: string[]): void;
   /** Merges into a word's own look; null clears it. */
   setWordStyle(id: string, style: WordStyle | null, key?: string): void;
+  /** Merges into a caption block's own look; null clears it. */
+  setCaptionStyle(id: string, style: Partial<BlockStyle> | null, key?: string): void;
 
   editCaption(id: string, text: string): void;
   splitCaption(id: string, wordIndex: number): void;
@@ -72,6 +77,11 @@ export const neededFamilies = (doc: Doc) => {
   const style = resolveStyle(doc);
   const families = new Set(familiesOf(style));
   for (const token of doc.tokens) if (token.style?.fontFamily) families.add(token.style.fontFamily);
+  if (doc.captionStyles) {
+    for (const bStyle of Object.values(doc.captionStyles)) {
+      if (bStyle.fontFamily) families.add(bStyle.fontFamily);
+    }
+  }
   return [...families];
 };
 
@@ -113,9 +123,10 @@ export const useEditor = create<EditorState>((set, get) => {
     lastAt: 0,
     notice: null,
     selectedToken: null,
+    selectedCaption: null,
     watermark: false,
 
-    load: (project) => set({ project, doc: project.doc, past: [], future: [], lastKey: null, notice: null, selectedToken: null }),
+    load: (project) => set({ project, doc: project.doc, past: [], future: [], lastKey: null, notice: null, selectedToken: null, selectedCaption: null }),
 
     undo() {
       const { doc, past, future } = get();
@@ -139,6 +150,8 @@ export const useEditor = create<EditorState>((set, get) => {
     setNotice: (notice) => set({ notice }),
 
     selectToken: (selectedToken) => set({ selectedToken }),
+
+    selectCaption: (selectedCaption) => set({ selectedCaption }),
 
     setWatermark: (watermark) => set({ watermark }),
 
@@ -241,6 +254,16 @@ export const useEditor = create<EditorState>((set, get) => {
         if (!token) return;
         if (style) token.style = { ...token.style, ...style };
         else delete token.style;
+      }, key),
+
+    setCaptionStyle: (id, style, key) =>
+      commit((doc) => {
+        if (!doc.captionStyles) doc.captionStyles = {};
+        if (style) {
+          doc.captionStyles[id] = { ...doc.captionStyles[id], ...style };
+        } else {
+          delete doc.captionStyles[id];
+        }
       }, key),
 
     editCaption(id, text) {

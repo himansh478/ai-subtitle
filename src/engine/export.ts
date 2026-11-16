@@ -37,6 +37,8 @@ type ExportJob = {
   writable: FileSystemWritableFileStream;
   settings: ExportSettings;
   person: PersonMask | null;
+  /** Whether the caption active at this time is behind the person */
+  isBehindAt?: (time: number) => boolean;
   watermark: boolean;
   crop: Crop | null;
   onProgress: (fraction: number) => void;
@@ -82,7 +84,8 @@ export async function exportVideo({ ck, surface, renderer }: Studio, canvasEl: H
         else canvas.drawImageRectOptions(image, from, target, ck.FilterMode.Linear, ck.MipmapMode.None, null);
 
         renderer.draw(canvas, captions, time, (caption) => styleAt(caption, time));
-        if (person) {
+        const isBehind = job.isBehindAt ? job.isBehindAt(time) : !!person;
+        if (person && isBehind) {
           const mask = person.read(ck, frame);
           if (mask) {
             drawCutout(ck, canvas, image, mask, { left, share }, target);

@@ -43,8 +43,10 @@ function RowView({ caption, active, hasNext, doubtful, seek }: RowProps) {
   const [draft, setDraft] = useState(text);
   const areaRef = useRef<HTMLTextAreaElement>(null);
   const rowRef = useRef<HTMLDivElement>(null);
-  const { editCaption, splitCaption, mergeWithNext, deleteCaption, selectToken, markChecked } = useEditor.getState();
+  const { editCaption, splitCaption, mergeWithNext, deleteCaption, selectToken, selectCaption, markChecked } = useEditor.getState();
   const selected = useEditor((s) => (active ? s.selectedToken : null));
+  const isSelectedBlock = useEditor((s) => s.selectedCaption === caption.id);
+  const blockStyle = useEditor((s) => s.doc?.captionStyles?.[caption.id]);
 
   useEffect(() => setDraft(text), [text]);
 
@@ -73,12 +75,20 @@ function RowView({ caption, active, hasNext, doubtful, seek }: RowProps) {
   };
 
   return (
-    <div className={`row ${active ? 'active' : ''}`} ref={rowRef}>
+    <div
+      className={`row ${active ? 'active' : ''} ${isSelectedBlock ? 'selected-block' : ''}`}
+      ref={rowRef}
+      onClick={() => selectCaption(caption.id)}
+    >
       <div className="row-head">
         <button
           type="button"
           className="time-badge"
-          onClick={() => seek(captionStart(caption) + 0.001)}
+          onClick={(e) => {
+            e.stopPropagation();
+            selectCaption(caption.id);
+            seek(captionStart(caption) + 0.001);
+          }}
           title="Click to jump playhead here"
         >
           <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -87,7 +97,33 @@ function RowView({ caption, active, hasNext, doubtful, seek }: RowProps) {
           <span>{stamp(captionStart(caption))} – {stamp(captionEnd(caption))}</span>
         </button>
 
+        {blockStyle && (
+          <div className="row-block-badges">
+            {blockStyle.behindPerson && <span className="block-style-tag behind" title="Behind Person Active">👤 Behind</span>}
+            {blockStyle.anchorY !== undefined && <span className="block-style-tag pos" title="Custom Position">📍 {Math.round(blockStyle.anchorY * 100)}%</span>}
+            {blockStyle.color && <span className="block-style-tag color" style={{ borderColor: blockStyle.color, color: blockStyle.color }}>● Color</span>}
+          </div>
+        )}
+
         <div className="row-actions">
+          <button
+            type="button"
+            className={`ghost row-action-btn ${isSelectedBlock ? 'active-block-btn' : ''}`}
+            onClick={(e) => {
+              e.stopPropagation();
+              selectCaption(caption.id);
+              seek(captionStart(caption) + 0.001);
+            }}
+            title="Customize this block (Behind person, position, colors)"
+          >
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <polygon points="12 2 2 7 12 12 22 7 12 2" />
+              <polyline points="2 17 12 22 22 17" />
+              <polyline points="2 12 12 17 22 12" />
+            </svg>
+            Block
+          </button>
+
           <button
             type="button"
             className="ghost row-action-btn"
