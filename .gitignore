@@ -7,3 +7,5 @@ work/
 next-env.d.ts
 *.tsbuildinfo
 .venv/
+.data/
+

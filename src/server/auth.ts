@@ -1,4 +1,5 @@
 import { accountsOn, admin } from './supabase';
+import { verifySessionToken } from './session';
 
 export type Viewer = { id: string; email: string | null };
 
@@ -14,22 +15,53 @@ function onTeam(email: string | null) {
   return team.length === 0 || (!!email && team.includes(email.toLowerCase()));
 }
 
-/** Who sent this request, checked with Supabase. Null means not signed in, or not let in. */
+function parseCookie(cookieHeader: string | null, name: string) {
+  if (!cookieHeader) return null;
+  const match = cookieHeader.match(new RegExp(`${name}=([^;]+)`));
+  return match ? match[1] : null;
+}
+
+/** Who sent this request, checked with built-in JWT or Supabase. */
 export async function viewerOf(request: Request): Promise<Viewer | null> {
-  // Local mode exists for development. A deployed app with no accounts stays locked.
-  if (!accountsOn()) return process.env.NODE_ENV === 'development' ? LOCAL_VIEWER : null;
+  const authHeader = request.headers.get('authorization')?.replace(/^Bearer /i, '');
+  const cookieToken = parseCookie(request.headers.get('cookie'), 'cwaya_session');
+  const token = authHeader || cookieToken;
 
-  const token = request.headers.get('authorization')?.replace(/^Bearer /i, '');
-  if (!token) return null;
-
-  const { data, error } = await admin().auth.getUser(token);
-  if (error || !data.user) return null;
-  const email = data.user.email ?? null;
-  if (!onTeam(email)) {
-    outsiders.add(request);
-    return null;
+  // 1. Check built-in session JWT
+  if (token) {
+    const claims = verifySessionToken(token);
+    if (claims) {
+      if (!onTeam(claims.email)) {
+        outsiders.add(request);
+        return null;
+      }
+      return { id: claims.sub, email: claims.email };
+    }
   }
-  return { id: data.user.id, email };
+
+  // 2. Check Supabase session if configured
+  if (accountsOn() && token) {
+    try {
+      const { data, error } = await admin().auth.getUser(token);
+      if (!error && data?.user) {
+        const email = data.user.email ?? null;
+        if (!onTeam(email)) {
+          outsiders.add(request);
+          return null;
+        }
+        return { id: data.user.id, email };
+      }
+    } catch {
+      // Fall through
+    }
+  }
+
+  // 3. Fallback for local development if not signed in
+  if (process.env.NODE_ENV === 'development') {
+    return LOCAL_VIEWER;
+  }
+
+  return null;
 }
 
 // Someone signed in but not let in hears why, and keeps their session: a 401 would sign them out.
