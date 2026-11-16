@@ -10,6 +10,12 @@ const MAX_ZOOM = 300;
 const WAVE_HEIGHT = 40;
 const MIN_LENGTH = 0.1;
 
+const stamp = (t: number) => {
+  const m = Math.floor(t / 60);
+  const s = (t % 60).toFixed(2).padStart(5, '0');
+  return `${m}:${s}`;
+};
+
 type Drag = { id: string; mode: 'move' | 'left' | 'right'; x: number; start: number; end: number; min: number; max: number };
 
 export function Timeline({ captions, seek }: { captions: Caption[]; seek: (t: number) => void }) {
@@ -23,8 +29,12 @@ export function Timeline({ captions, seek }: { captions: Caption[]; seek: (t: nu
   const [preview, setPreview] = useState<{ id: string; start: number; end: number } | null>(null);
   const [activeId, setActiveId] = useState<string | null>(null);
   const needleRef = useRef<HTMLDivElement>(null);
+  const tooltipRef = useRef<HTMLSpanElement>(null);
   const waveRef = useRef<HTMLCanvasElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const trackInnerRef = useRef<HTMLDivElement>(null);
+  const [scrubbing, setScrubbing] = useState(false);
+  const scrubbingRef = useRef(false);
 
   const duration = project?.media.duration ?? 0;
   const width = Math.max(1, duration * zoom);
@@ -32,10 +42,13 @@ export function Timeline({ captions, seek }: { captions: Caption[]; seek: (t: nu
   useEffect(() => {
     const update = (time: number) => {
       if (needleRef.current) needleRef.current.style.left = `${time * zoom}px`;
+      if (tooltipRef.current) tooltipRef.current.textContent = stamp(time);
       const scroller = scrollRef.current;
-      if (scroller) {
+      if (scroller && !scrubbingRef.current) {
         const x = time * zoom;
-        if (x < scroller.scrollLeft || x > scroller.scrollLeft + scroller.clientWidth - 40) scroller.scrollLeft = x - 40;
+        if (x < scroller.scrollLeft || x > scroller.scrollLeft + scroller.clientWidth - 40) {
+          scroller.scrollLeft = x - 40;
+        }
       }
       setActiveId(captions.find((c) => time >= captionStart(c) && time < captionEnd(c))?.id ?? null);
     };
@@ -63,9 +76,51 @@ export function Timeline({ captions, seek }: { captions: Caption[]; seek: (t: nu
     }
   }, [project, width]);
 
-  const timeAt = (e: PointerEvent<HTMLElement>) => {
-    const box = e.currentTarget.getBoundingClientRect();
-    return (e.clientX - box.left) / zoom;
+  const updateScrub = (clientX: number) => {
+    const inner = trackInnerRef.current;
+    if (!inner) return;
+    const box = inner.getBoundingClientRect();
+    const time = Math.max(0, Math.min(duration, (clientX - box.left) / zoom));
+    seek(time);
+
+    // Auto-scroll timeline when dragging near edges
+    const scroller = scrollRef.current;
+    if (scroller) {
+      const viewLeft = scroller.getBoundingClientRect().left;
+      const viewRight = scroller.getBoundingClientRect().right;
+      if (clientX > viewRight - 50) {
+        scroller.scrollLeft += 12;
+      } else if (clientX < viewLeft + 50) {
+        scroller.scrollLeft -= 12;
+      }
+    }
+  };
+
+  const startScrub = (e: PointerEvent<HTMLElement>) => {
+    e.stopPropagation();
+    e.preventDefault();
+    scrubbingRef.current = true;
+    setScrubbing(true);
+    try {
+      e.currentTarget.setPointerCapture(e.pointerId);
+    } catch {}
+    updateScrub(e.clientX);
+  };
+
+  const moveScrub = (e: PointerEvent<HTMLElement>) => {
+    if (!scrubbingRef.current) return;
+    e.preventDefault();
+    updateScrub(e.clientX);
+  };
+
+  const endScrub = (e: PointerEvent<HTMLElement>) => {
+    if (scrubbingRef.current) {
+      scrubbingRef.current = false;
+      setScrubbing(false);
+      try {
+        e.currentTarget.releasePointerCapture(e.pointerId);
+      } catch {}
+    }
   };
 
   const begin = (e: PointerEvent<HTMLElement>, caption: Caption, index: number, mode: Drag['mode']) => {
@@ -86,6 +141,10 @@ export function Timeline({ captions, seek }: { captions: Caption[]; seek: (t: nu
   };
 
   const move = (e: PointerEvent<HTMLElement>) => {
+    if (scrubbingRef.current) {
+      updateScrub(e.clientX);
+      return;
+    }
     const drag = dragRef.current;
     if (!drag) return;
     const delta = (e.clientX - drag.x) / zoom;
@@ -103,7 +162,11 @@ export function Timeline({ captions, seek }: { captions: Caption[]; seek: (t: nu
     setPreview(movedRef.current);
   };
 
-  const finish = () => {
+  const finish = (e: PointerEvent<HTMLElement>) => {
+    if (scrubbingRef.current) {
+      endScrub(e);
+      return;
+    }
     const drag = dragRef.current;
     const moved = movedRef.current;
     if (drag && moved) retime(moved.id, drag.start - offset, drag.end - offset, moved.start - offset, moved.end - offset);
@@ -128,18 +191,27 @@ export function Timeline({ captions, seek }: { captions: Caption[]; seek: (t: nu
       <div className="track-scroll" ref={scrollRef}>
         <div
           className="track-inner"
+          ref={trackInnerRef}
           style={{ width }}
           onPointerMove={move}
           onPointerUp={finish}
           onPointerCancel={finish}
         >
-          <div className="ruler" onPointerDown={(e) => seek(timeAt(e))}>
+          {/* Ruler for timecodes and continuous click/drag scrubbing */}
+          <div
+            className="ruler"
+            onPointerDown={startScrub}
+            onPointerMove={moveScrub}
+            onPointerUp={endScrub}
+            onPointerCancel={endScrub}
+          >
             {seconds.map((s) => (
               <span key={s} style={{ left: s * zoom }}>
                 {s}s
               </span>
             ))}
           </div>
+
           <div className="caption-track">
             {captions.map((caption, index) => {
               const shown = preview?.id === caption.id ? preview : { start: captionStart(caption), end: captionEnd(caption) };
@@ -159,8 +231,50 @@ export function Timeline({ captions, seek }: { captions: Caption[]; seek: (t: nu
               );
             })}
           </div>
-          <canvas className="wave" ref={waveRef} onPointerDown={(e) => seek(timeAt(e))} />
-          <div className="needle" ref={needleRef} />
+
+          {/* Audio Waveform Track */}
+          <canvas
+            className="wave"
+            ref={waveRef}
+            onPointerDown={startScrub}
+            onPointerMove={moveScrub}
+            onPointerUp={endScrub}
+            onPointerCancel={endScrub}
+          />
+
+          {/* Professional Interactive Playhead / CTI */}
+          <div
+            className={`needle ${scrubbing ? 'scrubbing' : ''}`}
+            ref={needleRef}
+            onPointerDown={startScrub}
+            onPointerMove={moveScrub}
+            onPointerUp={endScrub}
+            onPointerCancel={endScrub}
+            title="Drag Playhead to scrub"
+            role="slider"
+            aria-label="Timeline playhead"
+            aria-valuemin={0}
+            aria-valuemax={duration}
+          >
+            {/* Top Marker Handle */}
+            <div className="needle-handle">
+              <svg width="14" height="20" viewBox="0 0 14 20" fill="none">
+                <path
+                  d="M1 2C1 1.44772 1.44772 1 2 1H12C12.5523 1 13 1.44772 13 2V12.5858C13 12.851 12.8946 13.1054 12.7071 13.2929L7.70711 18.2929C7.31658 18.6834 6.68342 18.6834 6.29289 18.2929L1.29289 13.2929C1.10536 13.1054 1 12.851 1 12.5858V2Z"
+                  fill="#ff5e36"
+                  stroke="#ffffff"
+                  strokeWidth="1.2"
+                />
+              </svg>
+              {/* Tooltip showing timestamp on hover and scrub */}
+              <span className="needle-tooltip" ref={tooltipRef}>
+                0:00.00
+              </span>
+            </div>
+
+            {/* Glowing vertical needle line */}
+            <div className="needle-line" />
+          </div>
         </div>
       </div>
     </section>
