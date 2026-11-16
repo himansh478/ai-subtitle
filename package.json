@@ -5,6 +5,7 @@
   "scripts": {
     "dev": "next dev --webpack --hostname localhost --port 3100",
     "build": "next build --webpack",
+    "postbuild": "node -e \"const fs = require('fs'); try { if (fs.existsSync('.next') && !fs.existsSync('.next/lock')) fs.writeFileSync('.next/lock', ''); } catch (e) {}\"",
     "dev:accounts": "node scripts/dev-local.mjs",
     "typecheck": "tsc --noEmit"
   },
