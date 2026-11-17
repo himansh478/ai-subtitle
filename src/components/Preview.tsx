@@ -6,6 +6,8 @@ import { planPositions } from '@/engine/avoid';
 import { exportVideo, outputSize, type Crop, type ExportSettings } from '@/engine/export';
 import { cameraPath, cropShare, framedFaces } from '@/engine/framing';
 import { exportOverlay, sourceFrameRate } from '@/engine/overlay';
+import { buildCaptions } from '@/engine/group';
+import { playSfxSound } from '@/engine/sfx';
 import { drawCutout, PersonMask } from '@/engine/segment';
 import { createStudio, type Studio } from '@/engine/studio';
 import { faceTrack } from '@/engine/tracking';
@@ -13,7 +15,7 @@ import { captionEnd, captionStart, type Caption, type Style } from '@/engine/typ
 import { currentWatermark } from '@/lib/account';
 import { api } from '@/lib/auth';
 import { openExport, readExport } from '@/lib/storage';
-import { neededFamilies, resolveStyle, useEditor } from '@/state/editor';
+import { neededFamilies, resolveSfx, resolveStyle, useEditor } from '@/state/editor';
 import { playhead } from '@/state/playhead';
 
 const FRAME = 1 / 30;
@@ -232,7 +234,16 @@ export function Preview({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [captions]);
 
-  useEffect(() => useEditor.subscribe((s, p) => void ((s.doc !== p.doc || s.project !== p.project || s.watermark !== p.watermark) && redraw())));
+  useEffect(() =>
+    useEditor.subscribe((s, p) => {
+      if (s.doc !== p.doc && s.doc) {
+        captionsRef.current = buildCaptions(s.doc);
+      }
+      if (s.doc !== p.doc || s.project !== p.project || s.watermark !== p.watermark) {
+        redraw();
+      }
+    })
+  );
 
   useEffect(() => {
     const show = (time: number) => {
@@ -240,6 +251,8 @@ export function Preview({
     };
     return playhead.subscribe(show);
   }, []);
+
+  const lastSfxTimeRef = useRef<number>(-1);
 
   // While playing, follow the video's own clock on every display frame.
   useEffect(() => {
@@ -250,6 +263,41 @@ export function Preview({
       if (el) {
         playhead.set(el.currentTime);
         draw(el.currentTime);
+
+        // Synchronize keyboard typing sound effect
+        const curTime = el.currentTime;
+        const prevTime = lastSfxTimeRef.current;
+        if (prevTime < 0 || Math.abs(curTime - prevTime) > 0.3) {
+          lastSfxTimeRef.current = curTime;
+        } else if (curTime > prevTime) {
+          const sfx = resolveSfx(useEditor.getState().doc);
+          if (sfx.enabled && sfx.volume > 0) {
+            const mutedSet = new Set(sfx.mutedIds ?? []);
+            if (sfx.trigger === 'word') {
+              for (const cap of captionsRef.current) {
+                for (const w of cap.words) {
+                  const t = w.start + sfx.offset;
+                  if (t > prevTime && t <= curTime) {
+                    const id = w.tokenId ?? `${cap.id}:${w.text}`;
+                    if (!mutedSet.has(id)) {
+                      playSfxSound(sfx.sound, sfx.volume);
+                    }
+                  }
+                }
+              }
+            } else {
+              for (const cap of captionsRef.current) {
+                const t = captionStart(cap) + sfx.offset;
+                if (t > prevTime && t <= curTime) {
+                  if (!mutedSet.has(cap.id)) {
+                    playSfxSound(sfx.sound, sfx.volume);
+                  }
+                }
+              }
+            }
+          }
+          lastSfxTimeRef.current = curTime;
+        }
       }
       raf = requestAnimationFrame(loop);
     };
@@ -270,7 +318,7 @@ export function Preview({
   const renderOverlay = async (settings: ExportSettings, name: string, onProgress: (fraction: number) => void) => {
     const { doc, project } = useEditor.getState();
     if (!doc || !project) throw new Error('The editor is still loading.');
-    videoRef.current?.pause();
+    await safePause(videoRef.current);
 
     const target = outputSize(project.media, !!doc.reframe, settings.quality);
     const fps = settings.fps === 60 ? 60 : await sourceFrameRate(video);
@@ -285,18 +333,21 @@ export function Preview({
     toggle() {
       const el = videoRef.current;
       if (!el) return;
-      if (el.paused) el.play();
-      else el.pause();
+      if (el.paused) {
+        safePlay(el);
+      } else {
+        safePause(el);
+      }
     },
     seek,
     step(direction, frames) {
-      videoRef.current?.pause();
+      safePause(videoRef.current);
       seek(playhead.get() + direction * frames * FRAME);
     },
     async exportMp4(settings, onProgress) {
       const { doc, project } = useEditor.getState();
       if (!studioRef.current || !doc || !project) throw new Error('The editor is still loading.');
-      videoRef.current?.pause();
+      await safePause(videoRef.current);
       exportingRef.current = true;
 
       // The export has its own canvas, so it can be larger than the preview.
@@ -384,8 +435,11 @@ export function Preview({
     pressRef.current = null;
     setCentred(false);
     if (press && !press.moved) {
-      if (press.captionId) useEditor.getState().selectCaption(press.captionId);
-      if (press.tokenId) useEditor.getState().selectToken(press.tokenId);
+      if (press.tokenId) {
+        useEditor.getState().selectToken(press.tokenId);
+      } else if (press.captionId) {
+        useEditor.getState().selectCaption(press.captionId);
+      }
     }
   };
 
@@ -583,8 +637,38 @@ export function Preview({
   );
 }
 
-const previewToggle = (el: HTMLVideoElement | null) => {
+let activePlayPromise: Promise<void> | null = null;
+
+const safePlay = async (el: HTMLVideoElement) => {
+  try {
+    activePlayPromise = el.play();
+    await activePlayPromise;
+  } catch (err: any) {
+    if (err.name !== 'AbortError') {
+      console.warn('Playback error:', err);
+    }
+  } finally {
+    activePlayPromise = null;
+  }
+};
+
+const safePause = async (el: HTMLVideoElement | null) => {
   if (!el) return;
-  if (el.paused) el.play();
-  else el.pause();
+  if (activePlayPromise) {
+    try {
+      await activePlayPromise;
+    } catch {
+      // In-flight play promise cancellation is safely ignored
+    }
+  }
+  el.pause();
+};
+
+const previewToggle = async (el: HTMLVideoElement | null) => {
+  if (!el) return;
+  if (el.paused) {
+    await safePlay(el);
+  } else {
+    await safePause(el);
+  }
 };

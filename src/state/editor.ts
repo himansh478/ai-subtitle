@@ -2,6 +2,7 @@ import { produce } from 'immer';
 import { create } from 'zustand';
 import { applyTextEdit } from '@/engine/diff';
 import { autoBreak, captionRanges, editEnglish, sentenceRanges } from '@/engine/group';
+import { defaultSfx, type SfxConfig } from '@/engine/sfx';
 import { familiesOf, templates } from '@/engine/templates';
 import type { BlockStyle, Style, WordStyle } from '@/engine/types';
 import { withTokenText, type Doc, type FaceSample, type Project, type ScriptId, type Token } from '@/lib/project';
@@ -60,6 +61,10 @@ type EditorState = {
   setWordStyle(id: string, style: WordStyle | null, key?: string): void;
   /** Merges into a caption block's own look; null clears it. */
   setCaptionStyle(id: string, style: Partial<BlockStyle> | null, key?: string): void;
+  /** Configures synchronized sound effects (keyboard typing sound, volume, presets, offset) */
+  setSfx(config: Partial<SfxConfig>, key?: string): void;
+  /** Toggles sound mute on an individual word or caption block */
+  toggleSfxMute(id: string): void;
 
   editCaption(id: string, text: string): void;
   splitCaption(id: string, wordIndex: number): void;
@@ -71,6 +76,12 @@ type EditorState = {
 
 /** The template with this project's own changes on top. */
 export const resolveStyle = (doc: Doc): Style => ({ ...(templates[doc.templateId] ?? templates['pop-viral']), ...doc.overrides });
+
+/** The SFX configuration with project changes on top of defaults */
+export const resolveSfx = (doc: Doc | null): SfxConfig => ({
+  ...defaultSfx,
+  ...(doc?.sfx ?? {}),
+});
 
 /** Every font this project draws with, so all can be loaded before drawing. */
 export const neededFamilies = (doc: Doc) => {
@@ -265,6 +276,23 @@ export const useEditor = create<EditorState>((set, get) => {
           delete doc.captionStyles[id];
         }
       }, key),
+
+    setSfx: (config, key) =>
+      commit((doc) => {
+        doc.sfx = { ...defaultSfx, ...(doc.sfx ?? {}), ...config };
+      }, key),
+
+    toggleSfxMute: (id) =>
+      commit((doc) => {
+        if (!doc.sfx) doc.sfx = { ...defaultSfx };
+        const muted = new Set(doc.sfx.mutedIds ?? []);
+        if (muted.has(id)) {
+          muted.delete(id);
+        } else {
+          muted.add(id);
+        }
+        doc.sfx.mutedIds = Array.from(muted);
+      }),
 
     editCaption(id, text) {
       commit((doc) => {

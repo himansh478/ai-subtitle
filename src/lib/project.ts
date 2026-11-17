@@ -1,4 +1,5 @@
 import type { BlockStyle, Style, WordStyle } from '@/engine/types';
+import type { SfxConfig } from '@/engine/sfx';
 
 /** Face positions at one moment, as shares of the frame. */
 export type FaceSample = { time: number; boxes: { x: number; y: number; width: number; height: number }[] };
@@ -54,6 +55,8 @@ export type Doc = {
   behindPerson?: boolean;
   /** A landscape video is cropped to 9:16, with the frame following the speaker */
   reframe?: boolean;
+  /** Audio Sound Effects (e.g. keyboard typing sounds synced to words/captions) */
+  sfx?: SfxConfig;
 };
 
 export type Project = {

@@ -44,7 +44,7 @@ function RowView({ caption, active, hasNext, doubtful, seek }: RowProps) {
   const areaRef = useRef<HTMLTextAreaElement>(null);
   const rowRef = useRef<HTMLDivElement>(null);
   const { editCaption, splitCaption, mergeWithNext, deleteCaption, selectToken, selectCaption, markChecked } = useEditor.getState();
-  const selected = useEditor((s) => (active ? s.selectedToken : null));
+  const selected = useEditor((s) => s.selectedToken);
   const isSelectedBlock = useEditor((s) => s.selectedCaption === caption.id);
   const blockStyle = useEditor((s) => s.doc?.captionStyles?.[caption.id]);
 
@@ -187,7 +187,7 @@ function RowView({ caption, active, hasNext, doubtful, seek }: RowProps) {
         placeholder="Type caption text here..."
       />
 
-      {active && caption.words[0].tokenId && (
+      {(active || isSelectedBlock) && caption.words[0]?.tokenId && (
         <div className="chips-container">
           <span className="chips-label">Click word to customize:</span>
           <div className="chips" role="group" aria-label="Style one word">
@@ -197,7 +197,14 @@ function RowView({ caption, active, hasNext, doubtful, seek }: RowProps) {
                 type="button"
                 className={`word-chip ${word.tokenId === selected ? 'on' : ''} ${word.style ? 'styled' : ''}`}
                 aria-pressed={word.tokenId === selected}
-                onClick={() => selectToken(word.tokenId === selected ? null : (word.tokenId ?? null))}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  const nextToken = word.tokenId === selected ? null : (word.tokenId ?? null);
+                  selectToken(nextToken);
+                  if (nextToken) {
+                    seek(word.start + 0.001);
+                  }
+                }}
                 title={word.style ? 'Custom styled word (click to edit)' : 'Click to customize font/color/size'}
               >
                 {word.text}

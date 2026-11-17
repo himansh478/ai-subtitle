@@ -3,10 +3,12 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { FONT_FAMILIES, hasDevanagari, weightsOf } from '@/engine/fonts';
 import { buildCaptions } from '@/engine/group';
+import { playSfxSound } from '@/engine/sfx';
 import { renderThumbnails } from '@/engine/thumbnails';
 import { captionEnd, captionStart, type FontWeightName, type Style } from '@/engine/types';
 import { tokenText } from '@/lib/project';
-import { resolveStyle, useEditor } from '@/state/editor';
+import { resolveSfx, resolveStyle, useEditor } from '@/state/editor';
+import { playhead } from '@/state/playhead';
 import { FixPanel } from './FixPanel';
 import { TemplateGallery } from './TemplateGallery';
 
@@ -73,44 +75,377 @@ function Color({ label, value, onChange }: { label: string; value: string; onCha
   );
 }
 
-function WordControls() {
-  const doc = useEditor((s) => s.doc);
-  const selected = useEditor((s) => s.selectedToken);
-  const { setWordStyle } = useEditor.getState();
-  const token = doc?.tokens.find((t) => t.id === selected);
+const WORD_COLOR_PRESETS = [
+  { name: 'Viral Yellow', color: '#FFE600' },
+  { name: 'Neon Green', color: '#22C55E' },
+  { name: 'Hot Coral', color: '#FF5E36' },
+  { name: 'Electric Cyan', color: '#00F2FE' },
+  { name: 'Vibrant Purple', color: '#A855F7' },
+  { name: 'Pure White', color: '#FFFFFF' },
+  { name: 'Sunset Orange', color: '#FF9900' },
+];
 
-  if (!doc || !token) return <p className="hint">Click a word in the preview, or in the caption being played, to give it its own look.</p>;
-  const style = token.style ?? {};
+const WORD_SCALE_PRESETS = [
+  { label: '100%', value: 1.0 },
+  { label: '125%', value: 1.25 },
+  { label: '150%', value: 1.5 },
+  { label: '200%', value: 2.0 },
+];
+
+function WordControls({ seek }: { seek: (t: number) => void }) {
+  const doc = useEditor((s) => s.doc);
+  const selectedTokenId = useEditor((s) => s.selectedToken);
+  const selectedCaptionId = useEditor((s) => s.selectedCaption);
+  const { setWordStyle, selectToken } = useEditor.getState();
+
+  if (!doc) return null;
+  const captions = buildCaptions(doc);
   const base = resolveStyle(doc);
 
+  // Find all styled words across the project
+  const styledTokens = doc.tokens.filter(
+    (t) => t.style && (t.style.color || t.style.fontFamily || t.style.scale)
+  );
+
+  // If a token is selected, find it
+  const token = doc.tokens.find((t) => t.id === selectedTokenId);
+  const parentCaption = token
+    ? captions.find((c) => c.words.some((w) => w.tokenId === token.id))
+    : null;
+  const blockIndex = parentCaption
+    ? captions.findIndex((c) => c.id === parentCaption.id) + 1
+    : null;
+
+  // Active or selected caption block for contextual word picking
+  const activeCaption =
+    parentCaption ??
+    captions.find((c) => c.id === selectedCaptionId) ??
+    captions[0];
+
+  const handlePickPlayheadWord = () => {
+    const curTime = playhead.get();
+    const hit =
+      doc.tokens.find(
+        (t) => curTime >= t.start + doc.offset && curTime <= t.end + doc.offset
+      ) ??
+      doc.tokens.find((t) => curTime <= t.end + doc.offset) ??
+      doc.tokens[0];
+    if (hit) {
+      selectToken(hit.id);
+      seek(hit.start + doc.offset + 0.001);
+    }
+  };
+
+  if (!token) {
+    return (
+      <div className="word-inspector">
+        {/* Helper Card */}
+        <div className="word-empty-card">
+          <div className="word-empty-icon">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <polyline points="4 7 4 4 20 4 20 7" />
+              <line x1="9" y1="20" x2="15" y2="20" />
+              <line x1="12" y1="4" x2="12" y2="20" />
+            </svg>
+          </div>
+          <h3 className="word-empty-title">Select a Word to Style</h3>
+          <p className="word-empty-desc">
+            Kisi bhi word ko highlight ya alag look dene ke liye neeche list ya preview se word select karein:
+          </p>
+          <button
+            type="button"
+            className="word-pick-playhead-btn"
+            onClick={handlePickPlayheadWord}
+          >
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor">
+              <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" />
+            </svg>
+            <span>Pick Word at Playhead</span>
+          </button>
+        </div>
+
+        {/* Quick Word Picker from Active Block */}
+        {activeCaption && activeCaption.words.length > 0 && (
+          <div className="word-section">
+            <div className="section-title">
+              Words in Block {captions.indexOf(activeCaption) + 1}
+            </div>
+            <div className="word-quick-chips">
+              {activeCaption.words.map((w) => (
+                <button
+                  key={w.tokenId ?? w.text}
+                  type="button"
+                  className={`word-quick-chip ${w.style ? 'styled' : ''}`}
+                  onClick={() => {
+                    if (w.tokenId) {
+                      selectToken(w.tokenId);
+                      seek(w.start + 0.001);
+                    }
+                  }}
+                >
+                  <span>{w.text}</span>
+                  {w.style && <span className="chip-star">★</span>}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Styled Words Overview Tray */}
+        {styledTokens.length > 0 && (
+          <div className="word-section">
+            <div className="section-title">
+              Customized Words in Project ({styledTokens.length})
+            </div>
+            <div className="word-styled-tray">
+              {styledTokens.map((st) => (
+                <button
+                  key={st.id}
+                  type="button"
+                  className="word-styled-pill"
+                  onClick={() => {
+                    selectToken(st.id);
+                    seek(st.start + doc.offset + 0.001);
+                  }}
+                >
+                  <span
+                    className="styled-color-dot"
+                    style={{ backgroundColor: st.style?.color ?? base.activeColor }}
+                  />
+                  <span>{tokenText(st, doc.script)}</span>
+                  <span className="styled-time">{(st.start + doc.offset).toFixed(1)}s</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  const style = token.style ?? {};
+  const currentWordColor = style.color ?? base.activeColor;
+  const currentScale = style.scale ?? 1;
+  const currentFont = style.fontFamily ?? base.fontFamily;
+  const wordTextStr = tokenText(token, doc.script);
+
   return (
-    <>
-      <div className="section-label">{tokenText(token, doc.script)}</div>
-      <Color label="Colour" value={style.color ?? base.activeColor} onChange={(color) => setWordStyle(token.id, { color }, 'word-color')} />
-      <label className="field">
-        Font
+    <div className="word-inspector">
+      {/* Word Selector dropdown */}
+      <label className="field word-selector-field">
+        <span className="field-title">Selected Word</span>
         <select
-          value={style.fontFamily ?? ''}
+          value={token.id}
           onChange={(e) => {
-            const family = e.target.value;
-            const weights = weightsOf(family);
-            setWordStyle(token.id, family ? { fontFamily: family, fontWeight: weights[weights.length - 1] } : { fontFamily: undefined, fontWeight: undefined });
+            selectToken(e.target.value);
+            const targetTok = doc.tokens.find((t) => t.id === e.target.value);
+            if (targetTok) seek(targetTok.start + doc.offset + 0.001);
           }}
+          className="word-select-dropdown"
         >
-          <option value="">Same as caption</option>
-          {FONT_FAMILIES.map((family) => (
-            <option key={family} value={family}>
-              {family}
-              {hasDevanagari(family) ? ' (हिन्दी)' : ''}
+          {doc.tokens.map((t, idx) => (
+            <option key={t.id} value={t.id}>
+              {idx + 1}. &quot;{tokenText(t, doc.script)}&quot; ({(t.start + doc.offset).toFixed(2)}s)
+              {t.style ? ' ★ (Customized)' : ''}
             </option>
           ))}
         </select>
       </label>
-      <Slider label="Size %" min={50} max={250} step={5} value={Math.round((style.scale ?? 1) * 100)} onChange={(v) => setWordStyle(token.id, { scale: v / 100 }, 'word-size')} />
-      <button disabled={!token.style} onClick={() => setWordStyle(token.id, null)}>
-        Reset this word
-      </button>
-    </>
+
+      {/* Word Meta & Live Preview Card */}
+      <div className="word-meta-card">
+        <div className="word-meta-header">
+          <span className="word-block-tag">
+            {blockIndex ? `BLOCK ${blockIndex}` : 'WORD'}
+          </span>
+          <button
+            type="button"
+            className="word-jump-btn"
+            onClick={() => seek(token.start + doc.offset + 0.001)}
+            title="Jump playhead to this word"
+          >
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor">
+              <polygon points="5 3 19 12 5 21 5 3" />
+            </svg>
+            <span>
+              {(token.start + doc.offset).toFixed(2)}s – {(token.end + doc.offset).toFixed(2)}s
+            </span>
+          </button>
+        </div>
+
+        {/* Live Styled Preview Badge */}
+        <div className="word-preview-display">
+          <span
+            className="word-preview-text"
+            style={{
+              color: currentWordColor,
+              fontFamily: currentFont,
+              fontSize: `${Math.round(22 * Math.min(1.5, currentScale))}px`,
+            }}
+          >
+            {wordTextStr}
+          </span>
+        </div>
+      </div>
+
+      {/* Feature 1: Viral Color Presets */}
+      <div className="word-section">
+        <div className="section-title">Word Highlight Color</div>
+        <div className="word-color-presets">
+          {WORD_COLOR_PRESETS.map((preset) => {
+            const isSelected =
+              currentWordColor.toLowerCase() === preset.color.toLowerCase();
+            return (
+              <button
+                key={preset.color}
+                type="button"
+                className={`word-color-btn ${isSelected ? 'on' : ''}`}
+                style={{ backgroundColor: preset.color }}
+                onClick={() => {
+                  setWordStyle(token.id, { color: preset.color }, 'word-color');
+                  seek(token.start + doc.offset + 0.001);
+                }}
+                title={preset.name}
+              >
+                {isSelected && (
+                  <svg
+                    width="12"
+                    height="12"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke={
+                      preset.color === '#FFFFFF' || preset.color === '#FFE600'
+                        ? '#000'
+                        : '#fff'
+                    }
+                    strokeWidth="3"
+                  >
+                    <polyline points="20 6 9 17 4 12" />
+                  </svg>
+                )}
+              </button>
+            );
+          })}
+        </div>
+        <Color
+          label="Custom Color"
+          value={currentWordColor}
+          onChange={(color) => {
+            setWordStyle(token.id, { color }, 'word-color');
+            seek(token.start + doc.offset + 0.001);
+          }}
+        />
+      </div>
+
+      {/* Feature 2: Typography & Font Family */}
+      <div className="word-section">
+        <div className="section-title">Font Family</div>
+        <label className="field font-select-field">
+          <select
+            value={style.fontFamily ?? ''}
+            onChange={(e) => {
+              const family = e.target.value;
+              const weights = weightsOf(family);
+              setWordStyle(
+                token.id,
+                family
+                  ? { fontFamily: family, fontWeight: weights[weights.length - 1] }
+                  : { fontFamily: undefined, fontWeight: undefined },
+                'word-font'
+              );
+              seek(token.start + doc.offset + 0.001);
+            }}
+            className="word-select-dropdown"
+          >
+            <option value="">Same as Template ({base.fontFamily})</option>
+            {FONT_FAMILIES.map((family) => (
+              <option key={family} value={family}>
+                {family} {hasDevanagari(family) ? ' (हिन्दी)' : ''}
+              </option>
+            ))}
+          </select>
+        </label>
+      </div>
+
+      {/* Feature 3: Word Size & Scale */}
+      <div className="word-section">
+        <div className="section-title">Word Size & Pop Scale</div>
+        <div className="word-scale-presets">
+          {WORD_SCALE_PRESETS.map((preset) => {
+            const isScaleOn = Math.abs(currentScale - preset.value) < 0.05;
+            return (
+              <button
+                key={preset.label}
+                type="button"
+                className={`scale-preset-btn ${isScaleOn ? 'on' : ''}`}
+                onClick={() => {
+                  setWordStyle(token.id, { scale: preset.value }, 'word-scale');
+                  seek(token.start + doc.offset + 0.001);
+                }}
+              >
+                {preset.label}
+              </button>
+            );
+          })}
+        </div>
+
+        <Slider
+          label="Scale Percentage"
+          min={50}
+          max={250}
+          step={5}
+          unit="%"
+          value={Math.round(currentScale * 100)}
+          onChange={(v) => {
+            setWordStyle(token.id, { scale: v / 100 }, 'word-size');
+            seek(token.start + doc.offset + 0.001);
+          }}
+        />
+      </div>
+
+      {/* Reset Word to Default */}
+      <div className="word-reset-wrap">
+        <button
+          type="button"
+          disabled={!token.style}
+          onClick={() => {
+            setWordStyle(token.id, null);
+            seek(token.start + doc.offset + 0.001);
+          }}
+          className="ghost word-reset-btn"
+        >
+          Reset &ldquo;{wordTextStr}&rdquo; to Default Template
+        </button>
+      </div>
+
+      {/* Styled Words Tray */}
+      {styledTokens.length > 1 && (
+        <div className="word-section">
+          <div className="section-title">
+            Other Customized Words ({styledTokens.length})
+          </div>
+          <div className="word-styled-tray">
+            {styledTokens.map((st) => (
+              <button
+                key={st.id}
+                type="button"
+                className={`word-styled-pill ${st.id === token.id ? 'active' : ''}`}
+                onClick={() => {
+                  selectToken(st.id);
+                  seek(st.start + doc.offset + 0.001);
+                }}
+              >
+                <span
+                  className="styled-color-dot"
+                  style={{ backgroundColor: st.style?.color ?? base.activeColor }}
+                />
+                <span>{tokenText(st, doc.script)}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -319,12 +654,33 @@ export function StylePanel({ seek }: { seek: (t: number) => void }) {
   const script = doc?.script;
 
   useEffect(() => {
-    if (selectedCaption) setTab('block');
-  }, [selectedCaption]);
+    if (selected) {
+      setTab('word');
+    }
+  }, [selected]);
 
   useEffect(() => {
-    if (selected) setTab('word');
-  }, [selected]);
+    if (selectedCaption && !selected) {
+      setTab('block');
+    }
+  }, [selectedCaption, selected]);
+
+  useEffect(() => {
+    if (tab === 'word' && !selected && doc) {
+      const curTime = playhead.get();
+      const offset = doc.offset ?? 0;
+      const hit =
+        doc.tokens.find(
+          (t) => curTime >= t.start + offset && curTime <= t.end + offset
+        ) ??
+        doc.tokens.find((t) => curTime <= t.end + offset) ??
+        doc.tokens[0];
+      if (hit) {
+        useEditor.getState().selectToken(hit.id);
+        seek(hit.start + offset + 0.001);
+      }
+    }
+  }, [tab, selected, doc, seek]);
 
   useEffect(() => {
     renderThumbnails(script === 'hindi' ? 'devanagari' : 'latin').then(setThumbs);
@@ -332,6 +688,8 @@ export function StylePanel({ seek }: { seek: (t: number) => void }) {
 
   if (!doc) return null;
   const style = resolveStyle(doc);
+  const sfx = resolveSfx(doc);
+  const setSfx = useEditor.getState().setSfx;
   const set = (key: string) => (partial: Parameters<typeof setStyle>[0]) => setStyle(partial, key);
 
   return (
@@ -401,7 +759,7 @@ export function StylePanel({ seek }: { seek: (t: number) => void }) {
         </div>
       ) : tab === 'word' ? (
         <div className="tab-body">
-          <WordControls />
+          <WordControls seek={seek} />
         </div>
       ) : (
         <div className="tab-body">
@@ -488,6 +846,104 @@ export function StylePanel({ seek }: { seek: (t: number) => void }) {
           <Slider label="Height" min={5} max={95} value={Math.round(style.anchorY * 100)} onChange={(v) => set('position')({ anchorY: v / 100 })} />
           <Slider label="Words each" min={1} max={8} value={doc.maxWords} onChange={setMaxWords} />
           <Slider label="Delay (ms)" min={-500} max={500} step={10} value={Math.round(doc.offset * 1000)} onChange={(v) => setOffset(v / 1000)} />
+          </Group>
+
+          <Group title="Keyboard Typing Sound (SFX)" open>
+            <label className="field" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <span style={{ fontWeight: 600 }}>Enable Typing SFX</span>
+              <input
+                type="checkbox"
+                checked={sfx.enabled}
+                onChange={(e) => {
+                  setSfx({ enabled: e.target.checked }, 'sfx-enabled');
+                  if (e.target.checked) playSfxSound(sfx.sound, sfx.volume);
+                }}
+              />
+            </label>
+
+            {sfx.enabled && (
+              <>
+                <div style={{ marginBottom: '10px' }}>
+                  <div style={{ fontSize: '11.5px', fontWeight: 600, color: 'var(--muted)', marginBottom: '6px' }}>Sound Switch Style</div>
+                  <div className="position-preset-grid" style={{ gridTemplateColumns: '1fr 1fr' }}>
+                    {(
+                      [
+                        { id: 'mechanical', label: '⌨️ Mechanical' },
+                        { id: 'typewriter', label: '🖨️ Typewriter' },
+                        { id: 'pop', label: '💥 Pop Click' },
+                        { id: 'tap', label: '🔉 Soft Tap' },
+                      ] as const
+                    ).map((preset) => (
+                      <button
+                        key={preset.id}
+                        type="button"
+                        className={`preset-btn ${sfx.sound === preset.id ? 'on' : ''}`}
+                        onClick={() => {
+                          setSfx({ sound: preset.id }, 'sfx-sound');
+                          playSfxSound(preset.id, sfx.volume);
+                        }}
+                      >
+                        {preset.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div style={{ marginBottom: '10px' }}>
+                  <div style={{ fontSize: '11.5px', fontWeight: 600, color: 'var(--muted)', marginBottom: '6px' }}>Sync Timing Trigger</div>
+                  <div className="position-preset-grid" style={{ gridTemplateColumns: '1fr 1fr' }}>
+                    <button
+                      type="button"
+                      className={`preset-btn ${sfx.trigger === 'word' ? 'on' : ''}`}
+                      onClick={() => setSfx({ trigger: 'word' }, 'sfx-trigger')}
+                    >
+                      ⚡ Every Word
+                    </button>
+                    <button
+                      type="button"
+                      className={`preset-btn ${sfx.trigger === 'caption' ? 'on' : ''}`}
+                      onClick={() => setSfx({ trigger: 'caption' }, 'sfx-trigger')}
+                    >
+                      📑 Caption Block
+                    </button>
+                  </div>
+                </div>
+
+                <Slider
+                  label="SFX Volume"
+                  min={0}
+                  max={100}
+                  step={5}
+                  unit="%"
+                  value={Math.round(sfx.volume * 100)}
+                  onChange={(v) => {
+                    setSfx({ volume: v / 100 }, 'sfx-vol');
+                    playSfxSound(sfx.sound, v / 100);
+                  }}
+                />
+
+                <Slider
+                  label="Audio Delay / Sync"
+                  min={-100}
+                  max={100}
+                  step={5}
+                  unit="ms"
+                  value={Math.round(sfx.offset * 1000)}
+                  onChange={(v) => setSfx({ offset: v / 1000 }, 'sfx-offset')}
+                />
+
+                {(sfx.mutedIds?.length ?? 0) > 0 && (
+                  <button
+                    type="button"
+                    className="ghost block-reset-btn"
+                    style={{ marginTop: '8px' }}
+                    onClick={() => setSfx({ mutedIds: [] }, 'sfx-unmute-all')}
+                  >
+                    Unmute All Muted Timeline Clicks ({sfx.mutedIds?.length})
+                  </button>
+                )}
+              </>
+            )}
           </Group>
         </div>
       )}

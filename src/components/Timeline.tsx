@@ -1,8 +1,9 @@
 'use client';
 
-import { useEffect, useRef, useState, type PointerEvent } from 'react';
+import { useEffect, useMemo, useRef, useState, type PointerEvent } from 'react';
+import { playSfxSound, type SfxSoundType } from '@/engine/sfx';
 import { captionEnd, captionStart, type Caption } from '@/engine/types';
-import { useEditor } from '@/state/editor';
+import { resolveSfx, useEditor } from '@/state/editor';
 import { playhead } from '@/state/playhead';
 
 const MIN_ZOOM = 20;
@@ -25,7 +26,18 @@ export function Timeline({ captions, seek }: { captions: Caption[]; seek: (t: nu
   const selectCaption = useEditor((s) => s.selectCaption);
   const retime = useEditor((s) => s.retimeCaption);
   const offset = useEditor((s) => s.doc?.offset ?? 0);
+  const sfx = resolveSfx(doc);
+  const setSfx = useEditor.getState().setSfx;
+  const toggleSfxMute = useEditor.getState().toggleSfxMute;
   const [zoom, setZoom] = useState(70);
+
+  const sfxCount = useMemo(() => {
+    if (!sfx.enabled) return 0;
+    if (sfx.trigger === 'word') {
+      return captions.reduce((sum, c) => sum + c.words.length, 0);
+    }
+    return captions.length;
+  }, [captions, sfx.enabled, sfx.trigger]);
   // Refs, because a quick drag can move before React has re-rendered with the new state.
   const dragRef = useRef<Drag | null>(null);
   const movedRef = useRef<{ id: string; start: number; end: number } | null>(null);
@@ -189,7 +201,70 @@ export function Timeline({ captions, seek }: { captions: Caption[]; seek: (t: nu
           Zoom{' '}
           <input type="range" min={MIN_ZOOM} max={MAX_ZOOM} value={zoom} onChange={(e) => setZoom(Number(e.target.value))} />
         </label>
-        <span>Drag a caption to move it, or its edges to change its length. Space plays, S splits, arrows step one frame.</span>
+
+        {/* SFX Timeline Toolbar Controls */}
+        <div className="sfx-timeline-toolbar">
+          <button
+            type="button"
+            className={`sfx-tool-toggle ${sfx.enabled ? 'on' : ''}`}
+            onClick={() => {
+              const nextEnabled = !sfx.enabled;
+              setSfx({ enabled: nextEnabled });
+              if (nextEnabled) playSfxSound(sfx.sound, sfx.volume);
+            }}
+            title="Toggle Synchronized Keyboard Typing SFX"
+          >
+            <span className="sfx-tool-icon">{sfx.enabled ? '🔊' : '🔇'}</span>
+            <span>Typing SFX: {sfx.enabled ? 'ON' : 'OFF'}</span>
+          </button>
+
+          {sfx.enabled && (
+            <>
+              <select
+                className="sfx-tool-select"
+                value={sfx.sound}
+                onChange={(e) => {
+                  const snd = e.target.value as SfxSoundType;
+                  setSfx({ sound: snd });
+                  playSfxSound(snd, sfx.volume);
+                }}
+                title="Select Keyboard Sound Effect"
+              >
+                <option value="mechanical">⌨️ Mechanical Click</option>
+                <option value="typewriter">🖨️ Typewriter</option>
+                <option value="pop">💥 Pop Click</option>
+                <option value="tap">🔉 Soft Tap</option>
+              </select>
+
+              <button
+                type="button"
+                className={`sfx-mode-toggle ${sfx.trigger === 'word' ? 'on' : ''}`}
+                onClick={() => {
+                  const nextTrig = sfx.trigger === 'word' ? 'caption' : 'word';
+                  setSfx({ trigger: nextTrig });
+                }}
+                title="Trigger sound on Every Word vs Every Caption Block"
+              >
+                {sfx.trigger === 'word' ? '⚡ Words' : '📑 Captions'}
+              </button>
+
+              <div className="sfx-vol-box" title={`SFX Volume: ${Math.round(sfx.volume * 100)}%`}>
+                <span className="sfx-vol-label">Vol</span>
+                <input
+                  type="range"
+                  min={0}
+                  max={1}
+                  step={0.05}
+                  value={sfx.volume}
+                  onChange={(e) => setSfx({ volume: Number(e.target.value) }, 'sfx-vol')}
+                />
+                <span className="sfx-vol-val">{Math.round(sfx.volume * 100)}%</span>
+              </div>
+            </>
+          )}
+        </div>
+
+        <span className="timeline-hint">Drag captions or click SFX capsules to edit timing/mute.</span>
       </div>
       <div className="track-scroll" ref={scrollRef}>
         <div
@@ -247,6 +322,120 @@ export function Timeline({ captions, seek }: { captions: Caption[]; seek: (t: nu
               );
             })}
           </div>
+
+          {/* Editable SFX Sound Track (Professional DAW / NLE Block-Bound Track) */}
+          {sfx.enabled && (
+            <div className="sfx-track" title="Keyboard Typing Sound Track — Auto-shrinks with subtitles, click to preview/jump, ✕ to mute">
+              <div className="sfx-track-header">
+                <span className="sfx-track-label">
+                  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                    <rect x="2" y="4" width="20" height="16" rx="2" />
+                    <path d="M6 8h.001M10 8h.001M14 8h.001M18 8h.001M8 12h.001M16 12h.001M7 16h10" />
+                  </svg>
+                  <span>SFX ({sfxCount})</span>
+                </span>
+              </div>
+
+              {captions.map((caption) => {
+                const shown = preview?.id === caption.id ? preview : { start: captionStart(caption), end: captionEnd(caption) };
+                const laneLeft = Math.max(0, shown.start + sfx.offset) * zoom;
+                const laneWidth = Math.max(8, (shown.end - shown.start) * zoom);
+                const mutedSet = new Set(sfx.mutedIds ?? []);
+
+                if (sfx.trigger === 'caption') {
+                  const isMuted = mutedSet.has(caption.id);
+                  const isCur = Math.abs(playhead.get() - (shown.start + sfx.offset)) < 0.1;
+                  return (
+                    <div
+                      key={`sfx-cap-${caption.id}`}
+                      className={`sfx-block-unit ${isMuted ? 'muted' : ''} ${isCur ? 'active' : ''}`}
+                      style={{ left: laneLeft, width: laneWidth }}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        seek(shown.start + sfx.offset + 0.001);
+                        if (!isMuted) playSfxSound(sfx.sound, sfx.volume);
+                      }}
+                      title={`SFX Caption Click (${(shown.start + sfx.offset).toFixed(2)}s) — Click to play, ✕ to mute`}
+                    >
+                      <span className="sfx-key-icon">{isMuted ? '🔇' : '⌨'}</span>
+                      {laneWidth >= 50 && (
+                        <span className="sfx-key-text">{caption.words.map((w) => w.text).join(' ')}</span>
+                      )}
+                      <button
+                        type="button"
+                        className="sfx-key-mute"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          toggleSfxMute(caption.id);
+                        }}
+                        title={isMuted ? 'Unmute' : 'Mute'}
+                      >
+                        {isMuted ? '+' : '×'}
+                      </button>
+                    </div>
+                  );
+                }
+
+                // Word-by-word synchronized keycaps bounded to subtitle block lane:
+                return (
+                  <div
+                    key={`sfx-lane-${caption.id}`}
+                    className="sfx-block-lane"
+                    style={{ left: laneLeft, width: laneWidth }}
+                  >
+                    {caption.words.map((w, wIdx) => {
+                      const id = w.tokenId ?? `${caption.id}:${w.text}:${wIdx}`;
+                      const isMuted = mutedSet.has(id);
+                      const wStartRel = Math.max(0, w.start - shown.start);
+                      const segLeft = wStartRel * zoom;
+                      const segWidth = Math.max(5, (w.end - w.start) * zoom - 1);
+                      const isCur = Math.abs(playhead.get() - (w.start + sfx.offset)) < 0.08;
+
+                      return (
+                        <div
+                          key={id}
+                          className={`sfx-key-segment ${isMuted ? 'muted' : ''} ${isCur ? 'active' : ''}`}
+                          style={{ left: segLeft, width: segWidth }}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            seek(w.start + sfx.offset + 0.001);
+                            if (!isMuted) playSfxSound(sfx.sound, sfx.volume);
+                          }}
+                          onDoubleClick={(e) => {
+                            e.stopPropagation();
+                            toggleSfxMute(id);
+                          }}
+                          title={`"${w.text}" (${(w.start + sfx.offset).toFixed(2)}s) — Click to play, double-click or ✕ to mute`}
+                        >
+                          {segWidth >= 46 ? (
+                            <>
+                              <span className="sfx-key-icon">{isMuted ? '🔇' : '⌨'}</span>
+                              <span className="sfx-key-text">{w.text}</span>
+                              <button
+                                type="button"
+                                className="sfx-key-mute"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  toggleSfxMute(id);
+                                }}
+                                title={isMuted ? 'Unmute' : 'Mute'}
+                              >
+                                {isMuted ? '+' : '×'}
+                              </button>
+                            </>
+                          ) : segWidth >= 22 ? (
+                            <span className="sfx-key-text">{w.text}</span>
+                          ) : (
+                            <span className="sfx-key-pip" />
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                );
+              })}
+            </div>
+          )}
 
           {/* Audio Waveform Track */}
           <canvas
