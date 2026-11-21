@@ -70,14 +70,20 @@ export async function createProject(file: File, onStage: (stage: Stage, fraction
   if (!audioTrack) throw new Error('This video has no sound to caption.');
   if (isTooLong(duration)) throw new Error(TOO_LONG);
 
-  const audio = await speechAudio(file);
+  // Audio extraction and pipeline run in parallel with thumbnail generation
+  // so mobile phones don't wait for video seek before uploading audio.
+  const audioPromise = speechAudio(file);
+  const thumbPromise = makeThumbnail(file).catch(() => null);
+
   const name = file.name.replace(/\.[^.]+$/, '');
+  const audio = await audioPromise;
   const { language, tokens, envelope, speechGaps } = await runPipeline(audio, name, onStage);
 
   const id = newId();
+  // Save source video and audio first (critical), thumbnail can lag behind
   await saveMedia(id, 'source', file);
   await saveMedia(id, 'audio', audio);
-  const thumbnail = await makeThumbnail(file).catch(() => null);
+  const thumbnail = await thumbPromise;
   if (thumbnail) await saveMedia(id, 'thumb', thumbnail);
 
   const width = video.displayWidth;

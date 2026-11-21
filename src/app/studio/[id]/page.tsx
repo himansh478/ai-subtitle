@@ -19,6 +19,24 @@ import { newerCloudEdits } from '@/lib/sync';
 import { useEditor } from '@/state/editor';
 import { playhead } from '@/state/playhead';
 
+/**
+ * Mobile pe preview canvas zyada chhota render karte hain — fast draw hota hai.
+ * Export always happens at full 1080p (outputSize), sirf live preview scale hota hai.
+ */
+function previewSize(media: { width: number; height: number }, reframe: boolean) {
+  const full = outputSize(media, reframe);
+  if (typeof window === 'undefined') return full;
+  // Mobile: screen width se bada nahi hona chahiye, 540p max
+  const isMobile = window.innerWidth <= 768 || /Mobi|Android|iPhone|iPad/i.test(navigator.userAgent);
+  if (!isMobile) return full;
+  const maxShort = 540;
+  const short = Math.min(full.width, full.height);
+  if (short <= maxShort) return full;
+  const scale = maxShort / short;
+  const even = (n: number) => Math.round((n * scale) / 2) * 2;
+  return { width: even(full.width), height: even(full.height) };
+}
+
 export default function StudioPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
   const router = useRouter();
@@ -99,7 +117,7 @@ export default function StudioPage({ params }: { params: Promise<{ id: string }>
   }
   if (!project || !doc || !video) return <main className="home">Opening project…</main>;
 
-  const size = outputSize(project.media, !!doc.reframe);
+  const size = previewSize(project.media, !!doc.reframe);
 
   return (
     <>

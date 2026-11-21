@@ -471,6 +471,7 @@ export function Preview({
               ref={videoRef}
               src={url}
               playsInline
+              preload="auto"
               style={videoWidth ? { position: 'absolute', top: 0, height: '100%', width: `${videoWidth}%`, maxWidth: 'none' } : undefined}
               onLoadedData={(e) => {
                 e.currentTarget.currentTime = playhead.get();

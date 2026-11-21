@@ -61,6 +61,8 @@ type EditorState = {
   setWordStyle(id: string, style: WordStyle | null, key?: string): void;
   /** Merges into a caption block's own look; null clears it. */
   setCaptionStyle(id: string, style: Partial<BlockStyle> | null, key?: string): void;
+  /** Applies the same style partial to multiple caption blocks in one undo step; null clears all overrides. */
+  setBulkCaptionStyle(ids: string[], style: Partial<BlockStyle> | null, key?: string): void;
   /** Configures synchronized sound effects (keyboard typing sound, volume, presets, offset) */
   setSfx(config: Partial<SfxConfig>, key?: string): void;
   /** Toggles sound mute on an individual word or caption block */
@@ -274,6 +276,25 @@ export const useEditor = create<EditorState>((set, get) => {
           doc.captionStyles[id] = { ...doc.captionStyles[id], ...style };
         } else {
           delete doc.captionStyles[id];
+        }
+      }, key),
+
+    setBulkCaptionStyle: (ids, style, key) =>
+      commit((doc) => {
+        if (!doc.captionStyles) doc.captionStyles = {};
+        for (const id of ids) {
+          if (!style) {
+            delete doc.captionStyles[id];
+            continue;
+          }
+          if (!doc.captionStyles[id]) doc.captionStyles[id] = {};
+          for (const [k, v] of Object.entries(style)) {
+            if (v === null || v === undefined) {
+              delete (doc.captionStyles[id] as Record<string, unknown>)[k];
+            } else {
+              (doc.captionStyles[id] as Record<string, unknown>)[k] = v;
+            }
+          }
         }
       }, key),
 

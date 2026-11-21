@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState, type PointerEvent } from 'react';
 import { playSfxSound, type SfxSoundType } from '@/engine/sfx';
 import { captionEnd, captionStart, type Caption } from '@/engine/types';
-import { resolveSfx, useEditor } from '@/state/editor';
+import { resolveSfx, resolveStyle, useEditor } from '@/state/editor';
 import { playhead } from '@/state/playhead';
 
 const MIN_ZOOM = 20;
@@ -18,6 +18,7 @@ const stamp = (t: number) => {
 };
 
 type Drag = { id: string; mode: 'move' | 'left' | 'right'; x: number; start: number; end: number; min: number; max: number };
+type Lasso = { x0: number; x1: number };
 
 export function Timeline({ captions, seek }: { captions: Caption[]; seek: (t: number) => void }) {
   const project = useEditor((s) => s.project);
@@ -31,6 +32,13 @@ export function Timeline({ captions, seek }: { captions: Caption[]; seek: (t: nu
   const toggleSfxMute = useEditor.getState().toggleSfxMute;
   const [zoom, setZoom] = useState(70);
 
+  // ── Multi-select state ──────────────────────────────────────────────────────
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [lasso, setLasso] = useState<Lasso | null>(null);
+  const lassoStartRef = useRef<number | null>(null);
+  const lassoActiveRef = useRef(false);
+  const timelineRef = useRef<HTMLElement>(null);
+
   const sfxCount = useMemo(() => {
     if (!sfx.enabled) return 0;
     if (sfx.trigger === 'word') {
@@ -38,6 +46,7 @@ export function Timeline({ captions, seek }: { captions: Caption[]; seek: (t: nu
     }
     return captions.length;
   }, [captions, sfx.enabled, sfx.trigger]);
+
   // Refs, because a quick drag can move before React has re-rendered with the new state.
   const dragRef = useRef<Drag | null>(null);
   const movedRef = useRef<{ id: string; start: number; end: number } | null>(null);
@@ -53,6 +62,80 @@ export function Timeline({ captions, seek }: { captions: Caption[]; seek: (t: nu
 
   const duration = project?.media.duration ?? 0;
   const width = Math.max(1, duration * zoom);
+
+  // ── Bulk Position (Y and X) computation ─────────────────────────────────────
+  const bulkY = useMemo(() => {
+    if (selectedIds.size === 0 || !doc) return 0.5;
+    const baseY = resolveStyle(doc).anchorY;
+    let sum = 0;
+    let count = 0;
+    for (const id of selectedIds) {
+      const override = doc.captionStyles?.[id];
+      sum += override?.anchorY ?? baseY;
+      count++;
+    }
+    return count > 0 ? sum / count : baseY;
+  }, [selectedIds, doc]);
+
+  const bulkX = useMemo(() => {
+    if (selectedIds.size === 0 || !doc) return 0.5;
+    const baseX = resolveStyle(doc).anchorX;
+    let sum = 0;
+    let count = 0;
+    for (const id of selectedIds) {
+      const override = doc.captionStyles?.[id];
+      sum += override?.anchorX ?? baseX;
+      count++;
+    }
+    return count > 0 ? sum / count : baseX;
+  }, [selectedIds, doc]);
+
+  const applyBulkY = (v: number) => {
+    if (selectedIds.size === 0) return;
+    useEditor.getState().setBulkCaptionStyle([...selectedIds], { anchorY: v }, 'bulk-y');
+  };
+
+  const applyBulkX = (v: number) => {
+    if (selectedIds.size === 0) return;
+    useEditor.getState().setBulkCaptionStyle([...selectedIds], { anchorX: v }, 'bulk-x');
+  };
+
+  const resetBulkPosition = () => {
+    if (selectedIds.size === 0) return;
+    useEditor.getState().setBulkCaptionStyle([...selectedIds], { anchorY: undefined, anchorX: undefined }, 'bulk-reset');
+  };
+
+  // ── Select All toggle ────────────────────────────────────────────────────────
+  const toggleSelectAll = () => {
+    if (selectedIds.size === captions.length && captions.length > 0) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(captions.map((c) => c.id)));
+    }
+  };
+
+  // Keyboard shortcut Ctrl+A / Cmd+A when timeline is hovered
+  useEffect(() => {
+    const el = timelineRef.current;
+    if (!el) return;
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement;
+      if (/^(TEXTAREA|INPUT|SELECT)$/.test(target.tagName)) return;
+
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'a') {
+        if (el.contains(target) || el.matches(':hover')) {
+          e.preventDefault();
+          setSelectedIds(new Set(captions.map((c) => c.id)));
+        }
+      } else if (e.key === 'Escape' && selectedIds.size > 0) {
+        setSelectedIds(new Set());
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [captions, selectedIds.size]);
 
   useEffect(() => {
     const update = (time: number) => {
@@ -160,6 +243,19 @@ export function Timeline({ captions, seek }: { captions: Caption[]; seek: (t: nu
       updateScrub(e.clientX);
       return;
     }
+
+    // Lasso drag update
+    if (lassoActiveRef.current && lassoStartRef.current !== null) {
+      const inner = trackInnerRef.current;
+      const scroller = scrollRef.current;
+      if (inner && scroller) {
+        const box = inner.getBoundingClientRect();
+        const x1 = e.clientX - box.left + scroller.scrollLeft;
+        setLasso({ x0: lassoStartRef.current, x1 });
+      }
+      return;
+    }
+
     const drag = dragRef.current;
     if (!drag) return;
     const delta = (e.clientX - drag.x) / zoom;
@@ -182,6 +278,31 @@ export function Timeline({ captions, seek }: { captions: Caption[]; seek: (t: nu
       endScrub(e);
       return;
     }
+
+    // Lasso finish: select overlapping captions
+    if (lassoActiveRef.current && lasso) {
+      const lo = Math.min(lasso.x0, lasso.x1);
+      const hi = Math.max(lasso.x0, lasso.x1);
+      const dragged = Math.abs(lasso.x1 - lasso.x0) > 4;
+      if (dragged) {
+        const hits = new Set<string>();
+        for (const caption of captions) {
+          const shown = preview?.id === caption.id ? preview : { start: captionStart(caption), end: captionEnd(caption) };
+          const capLeft = shown.start * zoom;
+          const capRight = shown.end * zoom;
+          if (capLeft < hi && capRight > lo) hits.add(caption.id);
+        }
+        setSelectedIds(hits);
+      } else {
+        // Single click on background — clear selection
+        setSelectedIds(new Set());
+      }
+      lassoActiveRef.current = false;
+      lassoStartRef.current = null;
+      setLasso(null);
+      return;
+    }
+
     const drag = dragRef.current;
     const moved = movedRef.current;
     if (drag && moved) retime(moved.id, drag.start - offset, drag.end - offset, moved.start - offset, moved.end - offset);
@@ -190,14 +311,140 @@ export function Timeline({ captions, seek }: { captions: Caption[]; seek: (t: nu
     setPreview(null);
   };
 
+  // ── Lasso starts on the caption-track background ────────────────────────────
+  const startLasso = (e: PointerEvent<HTMLDivElement>) => {
+    // Only on direct click of .caption-track, not on a child .block
+    if ((e.target as HTMLElement).closest('.block')) return;
+    e.stopPropagation();
+    lassoActiveRef.current = true;
+    const inner = trackInnerRef.current;
+    const scroller = scrollRef.current;
+    if (inner && scroller) {
+      const box = inner.getBoundingClientRect();
+      const x0 = e.clientX - box.left + scroller.scrollLeft;
+      lassoStartRef.current = x0;
+      setLasso({ x0, x1: x0 });
+    }
+    try {
+      (e.currentTarget.closest('.track-inner') as HTMLElement).setPointerCapture(e.pointerId);
+    } catch {}
+  };
+
   const seconds: number[] = [];
   const stepBy = zoom < 40 ? 5 : zoom < 100 ? 2 : 1;
   for (let s = 0; s < duration; s += stepBy) seconds.push(s);
 
   return (
-    <section className="timeline">
+    <section className="timeline" ref={timelineRef}>
+      {/* ── Bulk Position Bar (shown when 1+ captions selected) ── */}
+      {selectedIds.size > 0 && (
+        <div className="bulk-pos-bar" role="toolbar" aria-label="Bulk Subtitle Position Controls">
+          <div className="bulk-pos-header">
+            <span className="bulk-pos-title">
+              📌 {selectedIds.size === captions.length ? 'All Subtitles Selected' : `${selectedIds.size} of ${captions.length} Selected`}
+            </span>
+
+            {/* Quick Position Presets */}
+            <div className="bulk-presets">
+              <button
+                type="button"
+                className={`bulk-preset-btn ${Math.abs(bulkY - 0.15) < 0.03 ? 'active' : ''}`}
+                onClick={() => applyBulkY(0.15)}
+                title="Move subtitles to Top (15%)"
+              >
+                Top (15%)
+              </button>
+              <button
+                type="button"
+                className={`bulk-preset-btn ${Math.abs(bulkY - 0.5) < 0.03 ? 'active' : ''}`}
+                onClick={() => applyBulkY(0.5)}
+                title="Move subtitles to Center (50%)"
+              >
+                Center (50%)
+              </button>
+              <button
+                type="button"
+                className={`bulk-preset-btn ${Math.abs(bulkY - 0.8) < 0.03 ? 'active' : ''}`}
+                onClick={() => applyBulkY(0.8)}
+                title="Move subtitles to Bottom (80%)"
+              >
+                Bottom (80%)
+              </button>
+            </div>
+          </div>
+
+          <div className="bulk-controls-row">
+            {/* Vertical Y Position Slider */}
+            <label className="bulk-pos-label">
+              <span className="bulk-axis-tag">Vertical (Y)</span>
+              <input
+                type="range"
+                min={5}
+                max={95}
+                step={1}
+                value={Math.round(bulkY * 100)}
+                onChange={(e) => applyBulkY(Number(e.target.value) / 100)}
+                title="Adjust vertical height for all selected subtitles"
+              />
+              <span className="bulk-pos-val">{Math.round(bulkY * 100)}%</span>
+            </label>
+
+            {/* Horizontal X Position Slider */}
+            <label className="bulk-pos-label">
+              <span className="bulk-axis-tag">Horizontal (X)</span>
+              <input
+                type="range"
+                min={10}
+                max={90}
+                step={1}
+                value={Math.round(bulkX * 100)}
+                onChange={(e) => applyBulkX(Number(e.target.value) / 100)}
+                title="Adjust horizontal center for all selected subtitles"
+              />
+              <span className="bulk-pos-val">{Math.round(bulkX * 100)}%</span>
+            </label>
+
+            {/* Reset & Deselect Buttons */}
+            <div className="bulk-actions">
+              <button
+                type="button"
+                className="ghost bulk-action-btn"
+                onClick={resetBulkPosition}
+                title="Reset custom position overrides back to template default"
+              >
+                ↺ Reset
+              </button>
+              <button
+                type="button"
+                className="ghost bulk-action-btn bulk-pos-clear"
+                onClick={() => setSelectedIds(new Set())}
+                title="Clear selection (Esc)"
+              >
+                ✕ Deselect
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="timeline-tools">
-        <label>
+        {/* Select All Captions Toggle Button */}
+        <button
+          type="button"
+          className={`timeline-select-all-btn ${selectedIds.size === captions.length && captions.length > 0 ? 'active' : ''}`}
+          onClick={toggleSelectAll}
+          title="Select all captions on the entire timeline (Ctrl+A)"
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+            <polyline points="20 6 9 17 4 12" />
+          </svg>
+          <span>
+            {selectedIds.size === captions.length && captions.length > 0 ? 'All Selected' : 'Select All'}
+          </span>
+          <span className="btn-count">({selectedIds.size > 0 ? `${selectedIds.size}/${captions.length}` : captions.length})</span>
+        </button>
+
+        <label className="timeline-zoom-label">
           Zoom{' '}
           <input type="range" min={MIN_ZOOM} max={MAX_ZOOM} value={zoom} onChange={(e) => setZoom(Number(e.target.value))} />
         </label>
@@ -264,8 +511,11 @@ export function Timeline({ captions, seek }: { captions: Caption[]; seek: (t: nu
           )}
         </div>
 
-        <span className="timeline-hint">Drag captions or click SFX capsules to edit timing/mute.</span>
+        <span className="timeline-hint">
+          Click &quot;Select All&quot; or drag to select subtitles &amp; set position together.
+        </span>
       </div>
+
       <div className="track-scroll" ref={scrollRef}>
         <div
           className="track-inner"
@@ -290,34 +540,67 @@ export function Timeline({ captions, seek }: { captions: Caption[]; seek: (t: nu
             ))}
           </div>
 
-          <div className="caption-track">
+          <div
+            className="caption-track"
+            onPointerDown={startLasso}
+          >
+            {/* Lasso selection rectangle */}
+            {lasso && (
+              <div
+                className="lasso-rect"
+                style={{
+                  left: Math.min(lasso.x0, lasso.x1),
+                  width: Math.abs(lasso.x1 - lasso.x0),
+                }}
+              />
+            )}
+
             {captions.map((caption, index) => {
               const shown = preview?.id === caption.id ? preview : { start: captionStart(caption), end: captionEnd(caption) };
               const isSelected = caption.id === selectedCaption;
+              const isMultiSelected = selectedIds.has(caption.id);
               const hasOverride = !!doc?.captionStyles?.[caption.id];
               const isBehind = doc?.captionStyles?.[caption.id]?.behindPerson;
               return (
                 <div
                   key={caption.id}
-                  className={`block ${caption.id === activeId ? 'active' : ''} ${isSelected ? 'selected' : ''} ${hasOverride ? 'customized' : ''}`}
+                  className={`block ${caption.id === activeId ? 'active' : ''} ${isSelected ? 'selected' : ''} ${isMultiSelected ? 'multi-selected' : ''} ${hasOverride ? 'customized' : ''}`}
                   style={{ left: shown.start * zoom, width: Math.max(4, (shown.end - shown.start) * zoom) }}
-                  title={`Block ${index + 1}: ${caption.words.map((w) => w.text).join(' ')}${hasOverride ? ' (Customized)' : ''}`}
+                  title={`Block ${index + 1}: ${caption.words.map((w) => w.text).join(' ')}${hasOverride ? ' (Customized)' : ''}${isMultiSelected ? ' (Selected)' : ''}`}
                   onPointerDown={(e) => {
+                    e.stopPropagation(); // prevent lasso from starting on a block
+                    // Shift-click: toggle this caption in multi-select
+                    if (e.shiftKey) {
+                      setSelectedIds((prev) => {
+                        const next = new Set(prev);
+                        if (next.has(caption.id)) next.delete(caption.id);
+                        else next.add(caption.id);
+                        return next;
+                      });
+                      return;
+                    }
+                    // Normal click: if not already multi-selected, single select
+                    if (!isMultiSelected) {
+                      setSelectedIds(new Set());
+                    }
                     selectCaption(caption.id);
                     begin(e, caption, index, 'move');
                   }}
                   onDoubleClick={() => seek(captionStart(caption) + 0.001)}
                 >
-                  <i className="edge left" onPointerDown={(e) => begin(e, caption, index, 'left')} />
+                  <i className="edge left" onPointerDown={(e) => { e.stopPropagation(); begin(e, caption, index, 'left'); }} />
                   <span className="block-content">
                     {hasOverride && (
                       <span className="block-custom-tag" title={isBehind ? 'Behind Person Active for this block' : 'Custom Style Active'}>
                         {isBehind ? '👤' : '★'}
                       </span>
                     )}
+                    {isMultiSelected && (
+                      <span className="block-multi-tag" title="Selected for Bulk Position">✓</span>
+                    )}
                     <span className="block-text">{caption.words.map((w) => w.text).join(' ')}</span>
                   </span>
-                  <i className="edge right" onPointerDown={(e) => begin(e, caption, index, 'right')} />
+                  <i className="edge right" onPointerDown={(e) => { e.stopPropagation(); begin(e, caption, index, 'right'); }} />
                 </div>
               );
             })}
