@@ -45,7 +45,7 @@ function Minutes({ account }: { account: Account }) {
     <div className="stats">
       <div className="stat">
         <b id="free-left">{minutes(account.freeLeft)}</b>
-        <span>free minutes left of {account.freeMinutes} this month</span>
+        <span>free trial minutes left (of {account.freeMinutes} min trial)</span>
       </div>
       <div className="stat">
         <b id="paid-left">{minutes(account.paidLeft)}</b>

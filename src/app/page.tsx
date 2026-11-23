@@ -155,10 +155,22 @@ export default function Home() {
               signedIn ? (
                 <div className="user-menu">
                   {account && (
-                    <Link href="/account" className="credits-badge" id="minutes-left">
-                      <span className="credits-icon">⚡</span>
-                      <span>{minutesLeft(account)} mins left</span>
-                    </Link>
+                    <>
+                      <Link href="/account" className="credits-badge" id="minutes-left" title="Account minutes & trial status">
+                        <span className="credits-icon">⚡</span>
+                        <span>
+                          {account.paidLeft > 0
+                            ? `${minutesLeft(account)} mins left`
+                            : account.freeLeft > 0
+                            ? `${Math.max(1, Math.ceil(account.freeLeft / 60))} Min Free Trial`
+                            : 'Trial Ended'}
+                        </span>
+                      </Link>
+                      <Link href="/account" className="paid-plans-btn" id="paid-plans-btn" title="View Paid Plans">
+                        <span className="plans-icon">💎</span>
+                        <span>Paid Plans</span>
+                      </Link>
+                    </>
                   )}
                   <button className="ghost sign-out-btn" onClick={() => signOut()}>
                     Sign out
@@ -166,6 +178,10 @@ export default function Home() {
                 </div>
               ) : (
                 <div className="auth-btn-group">
+                  <Link href="/account" className="paid-plans-btn" title="View Paid Plans">
+                    <span className="plans-icon">💎</span>
+                    <span>Paid Plans</span>
+                  </Link>
                   <Link href="/login">
                     <button className="ghost sign-in-btn">Sign in</button>
                   </Link>

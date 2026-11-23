@@ -70,9 +70,9 @@ export function registerUser(email: string, password: string, name?: string): Us
     passwordHash,
     salt,
     createdAt: Date.now(),
-    freeSecondsLeft: isVip ? 360000 : DEFAULT_FREE_SECONDS, // VIP: 100 hours, standard: 3 minutes (180s)
-    paidSecondsLeft: isVip ? 360000 : 0,
-    watermark: !isVip,
+    freeSecondsLeft: DEFAULT_FREE_SECONDS, // strictly 3 minutes (180s) free trial
+    paidSecondsLeft: 0,
+    watermark: true,
   };
 
   memoryUsers[cleanEmail] = user;

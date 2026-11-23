@@ -21,10 +21,10 @@ export async function GET(request: Request) {
     return Response.json({
       email: viewer.email,
       freeMinutes: FREE_MINUTES,
-      freeLeft: user ? user.freeSecondsLeft : (isVip ? 360000 : FREE_MINUTES * 60),
-      paidLeft: user ? user.paidSecondsLeft : (isVip ? 360000 : 0),
+      freeLeft: user ? user.freeSecondsLeft : FREE_MINUTES * 60,
+      paidLeft: user ? user.paidSecondsLeft : 0,
       paidUntil: null,
-      watermark: isVip ? false : (user ? user.watermark : false),
+      watermark: user ? user.watermark : false,
       paymentsReady: paymentsOn(),
       usage: [],
       orders: [],

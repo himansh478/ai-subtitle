@@ -19,9 +19,16 @@ export function AccountBar({ ready, signedIn, account }: { ready: boolean; signe
   return (
     <div className="account-bar">
       {account && (
-        <Link href="/account" id="minutes-left">
-          {minutesLeft(account)} minutes left
-        </Link>
+        <>
+          <Link href="/account" id="minutes-left">
+            {account.paidLeft > 0
+              ? `${minutesLeft(account)} mins left`
+              : `${Math.max(1, Math.ceil(account.freeLeft / 60))} Min Free Trial`}
+          </Link>
+          <Link href="/account" className="paid-plans-btn">
+            Paid Plans
+          </Link>
+        </>
       )}
       <button className="ghost" onClick={() => supabase?.auth.signOut()}>
         Sign out
