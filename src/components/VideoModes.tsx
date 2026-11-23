@@ -38,27 +38,29 @@ export function VideoModes() {
     }
   };
 
-  const toggle = (label: string, on: boolean, change: (next: boolean) => void, needsFaces = true, id?: string) => (
+  const toggle = (label: string, icon: string, on: boolean, change: (next: boolean) => void, needsFaces = true, id?: string) => (
     <button
       id={id}
-      className={on ? 'on' : ''}
+      className={`mode-toggle-btn ${on ? 'on' : ''}`}
       aria-pressed={on}
       disabled={needsFaces && scanning}
       onClick={() => {
         change(!on);
         if (needsFaces && !on) scan();
       }}
+      title={`${label} (${on ? 'Active' : 'Off'})`}
     >
-      {label}
+      <span className="mode-icon">{icon}</span>
+      <span className="mode-label">{label}</span>
     </button>
   );
 
   return (
     <div className="modes" role="group" aria-label="Video options">
-      {wide && toggle('Vertical 9:16', reframe, setReframe, true, 'reframe')}
-      {toggle('Avoid faces', avoid, setAvoidFaces)}
-      {toggle('Follow face', follow, (followFace) => setOption({ followFace }))}
-      {toggle('Behind person', behind, (behindPerson) => setOption({ behindPerson }), false)}
+      {wide && toggle('9:16 Vertical', '📱', reframe, setReframe, true, 'reframe')}
+      {toggle('Avoid Face', '👤', avoid, setAvoidFaces)}
+      {toggle('Follow Face', '🎯', follow, (followFace) => setOption({ followFace }))}
+      {toggle('Behind Person', '🌟', behind, (behindPerson) => setOption({ behindPerson }), false)}
       {scanning && <span className="scan">Finding faces {Math.round((progress ?? 0) * 100)}%</span>}
     </div>
   );

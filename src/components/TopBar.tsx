@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import { useState } from 'react';
+import { useAccount, minutesLeft } from '@/lib/account';
 import { accountsOn } from '@/lib/auth';
 import { SCRIPTS } from '@/lib/project';
 import { useEditor } from '@/state/editor';
@@ -9,6 +10,7 @@ import type { ExportKind } from './ExportDialog';
 import { VideoModes } from './VideoModes';
 
 export function TopBar({ onExport }: { onExport: (kind: ExportKind) => void }) {
+  const { account } = useAccount();
   const project = useEditor((s) => s.project);
   const script = useEditor((s) => s.doc?.script);
   const canUndo = useEditor((s) => s.past.length > 0);
@@ -96,15 +98,29 @@ export function TopBar({ onExport }: { onExport: (kind: ExportKind) => void }) {
         </div>
       )}
 
-      {/* Account Link */}
+      {/* Account & Free Trial Badge */}
       {accountsOn && (
-        <Link href="/account" className="ghost topbar-account-link" title="My Account & Usage">
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
-            <circle cx="12" cy="7" r="4"/>
-          </svg>
-          <span className="account-text">Account</span>
-        </Link>
+        <div className="topbar-account-group">
+          {account && (
+            <Link href="/account" className="topbar-trial-badge" title="View Account & Free Trial Minutes">
+              <span className="badge-icon">⚡</span>
+              <span>
+                {account.paidLeft > 0
+                  ? `${minutesLeft(account)}m left`
+                  : account.freeLeft > 0
+                  ? `${Math.max(1, Math.ceil(account.freeLeft / 60))}m Trial`
+                  : '0m Left'}
+              </span>
+            </Link>
+          )}
+          <Link href="/account" className="ghost topbar-account-link" title="My Account & Usage">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
+              <circle cx="12" cy="7" r="4"/>
+            </svg>
+            <span className="account-text">Account</span>
+          </Link>
+        </div>
       )}
 
       {/* Export Menu */}
