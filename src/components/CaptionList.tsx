@@ -4,7 +4,7 @@ import { memo, useEffect, useMemo, useRef, useState } from 'react';
 import { captionEnd, captionStart, type Caption } from '@/engine/types';
 import { tokenText } from '@/lib/project';
 import { realignPending, syncScripts } from '@/lib/realign';
-import { useEditor } from '@/state/editor';
+import { resolveSfx, useEditor } from '@/state/editor';
 import { playhead } from '@/state/playhead';
 
 const LOW_SCORE = 0.15;
@@ -43,10 +43,12 @@ function RowView({ caption, active, hasNext, doubtful, seek }: RowProps) {
   const [draft, setDraft] = useState(text);
   const areaRef = useRef<HTMLTextAreaElement>(null);
   const rowRef = useRef<HTMLDivElement>(null);
-  const { editCaption, splitCaption, mergeWithNext, deleteCaption, selectToken, selectCaption, markChecked } = useEditor.getState();
+  const { editCaption, splitCaption, mergeWithNext, deleteCaption, selectToken, selectCaption, markChecked, toggleSfxMute } = useEditor.getState();
   const selected = useEditor((s) => s.selectedToken);
   const isSelectedBlock = useEditor((s) => s.selectedCaption === caption.id);
   const blockStyle = useEditor((s) => s.doc?.captionStyles?.[caption.id]);
+  const sfx = resolveSfx(useEditor((s) => s.doc));
+  const isCapMuted = (sfx.mutedIds ?? []).includes(caption.id);
 
   useEffect(() => setDraft(text), [text]);
 
@@ -150,6 +152,21 @@ function RowView({ caption, active, hasNext, doubtful, seek }: RowProps) {
             Merge
           </button>
 
+          {sfx.enabled && (
+            <button
+              type="button"
+              className={`ghost row-action-btn sfx-row-toggle ${isCapMuted ? 'muted' : 'active'}`}
+              onClick={(e) => {
+                e.stopPropagation();
+                toggleSfxMute(caption.id);
+              }}
+              title={isCapMuted ? 'Click to enable SFX on this subtitle' : 'Click to delete/mute SFX on this subtitle'}
+            >
+              <span>{isCapMuted ? '🔇' : '⌨'}</span>
+              <span>{isCapMuted ? 'No SFX' : 'SFX'}</span>
+            </button>
+          )}
+
           <button
             type="button"
             className="ghost row-action-btn delete"
@@ -191,25 +208,45 @@ function RowView({ caption, active, hasNext, doubtful, seek }: RowProps) {
         <div className="chips-container">
           <span className="chips-label">Click word to customize:</span>
           <div className="chips" role="group" aria-label="Style one word">
-            {caption.words.map((word) => (
-              <button
-                key={word.tokenId}
-                type="button"
-                className={`word-chip ${word.tokenId === selected ? 'on' : ''} ${word.style ? 'styled' : ''}`}
-                aria-pressed={word.tokenId === selected}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  const nextToken = word.tokenId === selected ? null : (word.tokenId ?? null);
-                  selectToken(nextToken);
-                  if (nextToken) {
-                    seek(word.start + 0.001);
-                  }
-                }}
-                title={word.style ? 'Custom styled word (click to edit)' : 'Click to customize font/color/size'}
-              >
-                {word.text}
-              </button>
-            ))}
+            {caption.words.map((word, wIdx) => {
+              const wordId = word.tokenId ?? `${caption.id}:${word.text}:${wIdx}`;
+              const mutedSet = new Set(sfx.mutedIds ?? []);
+              const isWordMuted = isCapMuted || mutedSet.has(wordId);
+
+              return (
+                <div key={word.tokenId ?? wIdx} className="word-chip-wrapper">
+                  <button
+                    type="button"
+                    className={`word-chip ${word.tokenId === selected ? 'on' : ''} ${word.style ? 'styled' : ''} ${isWordMuted ? 'sfx-muted' : ''}`}
+                    aria-pressed={word.tokenId === selected}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      const nextToken = word.tokenId === selected ? null : (word.tokenId ?? null);
+                      selectToken(nextToken);
+                      if (nextToken) {
+                        seek(word.start + 0.001);
+                      }
+                    }}
+                    title={word.style ? 'Custom styled word (click to edit)' : 'Click to customize font/color/size'}
+                  >
+                    <span>{word.text}</span>
+                  </button>
+                  {sfx.enabled && (
+                    <button
+                      type="button"
+                      className={`word-sfx-chip-btn ${isWordMuted ? 'muted' : 'active'}`}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        toggleSfxMute(wordId);
+                      }}
+                      title={isWordMuted ? `Add typing sound to "${word.text}"` : `Delete typing sound from "${word.text}"`}
+                    >
+                      {isWordMuted ? '+' : '✕'}
+                    </button>
+                  )}
+                </div>
+              );
+            })}
           </div>
         </div>
       )}

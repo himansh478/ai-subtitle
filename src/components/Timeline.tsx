@@ -30,7 +30,11 @@ export function Timeline({ captions, seek }: { captions: Caption[]; seek: (t: nu
   const sfx = resolveSfx(doc);
   const setSfx = useEditor.getState().setSfx;
   const toggleSfxMute = useEditor.getState().toggleSfxMute;
+  const setBulkCaptionSfx = useEditor.getState().setBulkCaptionSfx;
+  const clearAllSfx = useEditor.getState().clearAllSfx;
+  const enableAllSfx = useEditor.getState().enableAllSfx;
   const [zoom, setZoom] = useState(70);
+  const [sfxManagerOpen, setSfxManagerOpen] = useState(false);
 
   // ── Multi-select state ──────────────────────────────────────────────────────
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -41,11 +45,21 @@ export function Timeline({ captions, seek }: { captions: Caption[]; seek: (t: nu
 
   const sfxCount = useMemo(() => {
     if (!sfx.enabled) return 0;
+    const muted = new Set(sfx.mutedIds ?? []);
     if (sfx.trigger === 'word') {
-      return captions.reduce((sum, c) => sum + c.words.length, 0);
+      let count = 0;
+      for (const c of captions) {
+        if (muted.has(c.id)) continue;
+        for (let i = 0; i < c.words.length; i++) {
+          const w = c.words[i];
+          const id = w.tokenId ?? `${c.id}:${w.text}:${i}`;
+          if (!muted.has(id)) count++;
+        }
+      }
+      return count;
     }
-    return captions.length;
-  }, [captions, sfx.enabled, sfx.trigger]);
+    return captions.filter((c) => !muted.has(c.id)).length;
+  }, [captions, sfx.enabled, sfx.trigger, sfx.mutedIds]);
 
   // Refs, because a quick drag can move before React has re-rendered with the new state.
   const dragRef = useRef<Drag | null>(null);
@@ -336,47 +350,49 @@ export function Timeline({ captions, seek }: { captions: Caption[]; seek: (t: nu
 
   return (
     <section className="timeline" ref={timelineRef}>
-      {/* ── Bulk Position Bar (shown when 1+ captions selected) ── */}
+      {/* ── Bulk Position Bar (Sleek, organized single-row toolbar) ── */}
       {selectedIds.size > 0 && (
-        <div className="bulk-pos-bar" role="toolbar" aria-label="Bulk Subtitle Position Controls">
-          <div className="bulk-pos-header">
-            <span className="bulk-pos-title">
-              📌 {selectedIds.size === captions.length ? 'All Subtitles Selected' : `${selectedIds.size} of ${captions.length} Selected`}
+        <div className="bulk-pos-bar" role="toolbar" aria-label="Bulk Subtitle Position & Sound Controls">
+          <div className="bulk-badge-wrap">
+            <span className="bulk-badge-pill">
+              📌 {selectedIds.size === captions.length ? 'All Subtitles Selected' : `${selectedIds.size}/${captions.length} Selected`}
             </span>
-
-            {/* Quick Position Presets */}
-            <div className="bulk-presets">
-              <button
-                type="button"
-                className={`bulk-preset-btn ${Math.abs(bulkY - 0.15) < 0.03 ? 'active' : ''}`}
-                onClick={() => applyBulkY(0.15)}
-                title="Move subtitles to Top (15%)"
-              >
-                Top (15%)
-              </button>
-              <button
-                type="button"
-                className={`bulk-preset-btn ${Math.abs(bulkY - 0.5) < 0.03 ? 'active' : ''}`}
-                onClick={() => applyBulkY(0.5)}
-                title="Move subtitles to Center (50%)"
-              >
-                Center (50%)
-              </button>
-              <button
-                type="button"
-                className={`bulk-preset-btn ${Math.abs(bulkY - 0.8) < 0.03 ? 'active' : ''}`}
-                onClick={() => applyBulkY(0.8)}
-                title="Move subtitles to Bottom (80%)"
-              >
-                Bottom (80%)
-              </button>
-            </div>
           </div>
 
-          <div className="bulk-controls-row">
-            {/* Vertical Y Position Slider */}
-            <label className="bulk-pos-label">
-              <span className="bulk-axis-tag">Vertical (Y)</span>
+          {/* Quick Alignment Presets */}
+          <div className="bulk-presets" title="Preset positions for selected subtitles">
+            <button
+              type="button"
+              className={`bulk-preset-btn ${Math.abs(bulkY - 0.15) < 0.03 ? 'active' : ''}`}
+              onClick={() => applyBulkY(0.15)}
+              title="Move to Top (15%)"
+            >
+              <span>⬆</span> Top
+            </button>
+            <button
+              type="button"
+              className={`bulk-preset-btn ${Math.abs(bulkY - 0.5) < 0.03 ? 'active' : ''}`}
+              onClick={() => applyBulkY(0.5)}
+              title="Move to Center (50%)"
+            >
+              <span>⬍</span> Center
+            </button>
+            <button
+              type="button"
+              className={`bulk-preset-btn ${Math.abs(bulkY - 0.8) < 0.03 ? 'active' : ''}`}
+              onClick={() => applyBulkY(0.8)}
+              title="Move to Bottom (80%)"
+            >
+              <span>⬇</span> Bottom
+            </button>
+          </div>
+
+          <div className="bulk-divider" />
+
+          {/* Compact Position Sliders */}
+          <div className="bulk-slider-group">
+            <label className="bulk-pos-label" title="Vertical Height (Y%)">
+              <span className="bulk-axis-tag">Y</span>
               <input
                 type="range"
                 min={5}
@@ -384,14 +400,12 @@ export function Timeline({ captions, seek }: { captions: Caption[]; seek: (t: nu
                 step={1}
                 value={Math.round(bulkY * 100)}
                 onChange={(e) => applyBulkY(Number(e.target.value) / 100)}
-                title="Adjust vertical height for all selected subtitles"
               />
               <span className="bulk-pos-val">{Math.round(bulkY * 100)}%</span>
             </label>
 
-            {/* Horizontal X Position Slider */}
-            <label className="bulk-pos-label">
-              <span className="bulk-axis-tag">Horizontal (X)</span>
+            <label className="bulk-pos-label" title="Horizontal Center (X%)">
+              <span className="bulk-axis-tag">X</span>
               <input
                 type="range"
                 min={10}
@@ -399,30 +413,53 @@ export function Timeline({ captions, seek }: { captions: Caption[]; seek: (t: nu
                 step={1}
                 value={Math.round(bulkX * 100)}
                 onChange={(e) => applyBulkX(Number(e.target.value) / 100)}
-                title="Adjust horizontal center for all selected subtitles"
               />
               <span className="bulk-pos-val">{Math.round(bulkX * 100)}%</span>
             </label>
+          </div>
 
-            {/* Reset & Deselect Buttons */}
-            <div className="bulk-actions">
-              <button
-                type="button"
-                className="ghost bulk-action-btn"
-                onClick={resetBulkPosition}
-                title="Reset custom position overrides back to template default"
-              >
-                ↺ Reset
-              </button>
-              <button
-                type="button"
-                className="ghost bulk-action-btn bulk-pos-clear"
-                onClick={() => setSelectedIds(new Set())}
-                title="Clear selection (Esc)"
-              >
-                ✕ Deselect
-              </button>
-            </div>
+          <div className="bulk-divider" />
+
+          {/* Bulk SFX Actions (Apply/Remove SFX on selected subtitles) */}
+          <div className="bulk-sfx-group" title="Manage Typing SFX on selected subtitles">
+            <button
+              type="button"
+              className="bulk-sfx-btn on"
+              onClick={() => setBulkCaptionSfx([...selectedIds], true)}
+              title="Apply Typing SFX to all selected subtitles"
+            >
+              <span className="sfx-icon">⌨</span>
+              <span>Apply SFX</span>
+            </button>
+            <button
+              type="button"
+              className="bulk-sfx-btn mute"
+              onClick={() => setBulkCaptionSfx([...selectedIds], false)}
+              title="Delete / Remove Typing SFX from all selected subtitles"
+            >
+              <span className="sfx-icon">🔇</span>
+              <span>Remove SFX</span>
+            </button>
+          </div>
+
+          {/* Reset & Deselect Buttons */}
+          <div className="bulk-actions">
+            <button
+              type="button"
+              className="bulk-action-btn"
+              onClick={resetBulkPosition}
+              title="Reset position overrides back to default"
+            >
+              ↺ Reset
+            </button>
+            <button
+              type="button"
+              className="bulk-action-btn bulk-pos-clear"
+              onClick={() => setSelectedIds(new Set())}
+              title="Clear selection (Esc)"
+            >
+              ✕ Deselect
+            </button>
           </div>
         </div>
       )}
@@ -506,6 +543,34 @@ export function Timeline({ captions, seek }: { captions: Caption[]; seek: (t: nu
                   onChange={(e) => setSfx({ volume: Number(e.target.value) }, 'sfx-vol')}
                 />
                 <span className="sfx-vol-val">{Math.round(sfx.volume * 100)}%</span>
+              </div>
+
+              {/* Quick Timeline Range Buttons */}
+              <div className="sfx-quick-actions">
+                <button
+                  type="button"
+                  className="sfx-action-pill"
+                  onClick={() => enableAllSfx()}
+                  title="Apply typing sound across entire timeline (all subtitles)"
+                >
+                  ⚡ All
+                </button>
+                <button
+                  type="button"
+                  className="sfx-action-pill mute"
+                  onClick={() => clearAllSfx(captions.map((c) => c.id))}
+                  title="Remove / Clear sound effects from all subtitles"
+                >
+                  🗑️ Clear
+                </button>
+                <button
+                  type="button"
+                  className={`sfx-action-pill manage ${sfxManagerOpen ? 'active' : ''}`}
+                  onClick={() => setSfxManagerOpen(!sfxManagerOpen)}
+                  title="Open organized SFX manager for every word & subtitle"
+                >
+                  ⚙️ Manage SFX
+                </button>
               </div>
             </>
           )}
@@ -606,10 +671,10 @@ export function Timeline({ captions, seek }: { captions: Caption[]; seek: (t: nu
             })}
           </div>
 
-          {/* Editable SFX Sound Track (Professional DAW / NLE Block-Bound Track) */}
+          {/* Editable SFX Sound Track (Clean, Organized, Pro Block-Bound Track) */}
           {sfx.enabled && (
-            <div className="sfx-track" title="Keyboard Typing Sound Track — Auto-shrinks with subtitles, click to preview/jump, ✕ to mute">
-              <div className="sfx-track-header">
+            <div className="sfx-track" title="Typing SFX Track — Click subtitle to play, ✕ to delete SFX">
+              <div className="sfx-track-header" onClick={() => setSfxManagerOpen(true)} title="Click to open SFX Manager">
                 <span className="sfx-track-label">
                   <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
                     <rect x="2" y="4" width="20" height="16" rx="2" />
@@ -622,38 +687,40 @@ export function Timeline({ captions, seek }: { captions: Caption[]; seek: (t: nu
               {captions.map((caption) => {
                 const shown = preview?.id === caption.id ? preview : { start: captionStart(caption), end: captionEnd(caption) };
                 const laneLeft = Math.max(0, shown.start + sfx.offset) * zoom;
-                const laneWidth = Math.max(8, (shown.end - shown.start) * zoom);
+                const laneWidth = Math.max(18, (shown.end - shown.start) * zoom);
                 const mutedSet = new Set(sfx.mutedIds ?? []);
+                const isCapMuted = mutedSet.has(caption.id);
+                const isCur = Math.abs(playhead.get() - (shown.start + sfx.offset)) < 0.1;
+                const isSelected = selectedIds.has(caption.id) || selectedCaption === caption.id;
 
-                if (sfx.trigger === 'caption') {
-                  const isMuted = mutedSet.has(caption.id);
-                  const isCur = Math.abs(playhead.get() - (shown.start + sfx.offset)) < 0.1;
+                // Caption trigger or narrow lane: render coherent subtitle block with delete/add button
+                if (sfx.trigger === 'caption' || (laneWidth < 70 && !isSelected)) {
                   return (
                     <div
                       key={`sfx-cap-${caption.id}`}
-                      className={`sfx-block-unit ${isMuted ? 'muted' : ''} ${isCur ? 'active' : ''}`}
+                      className={`sfx-block-unit ${isCapMuted ? 'muted' : ''} ${isCur ? 'active' : ''} ${isSelected ? 'selected' : ''}`}
                       style={{ left: laneLeft, width: laneWidth }}
                       onClick={(e) => {
                         e.stopPropagation();
                         seek(shown.start + sfx.offset + 0.001);
-                        if (!isMuted) playSfxSound(sfx.sound, sfx.volume);
+                        if (!isCapMuted) playSfxSound(sfx.sound, sfx.volume);
                       }}
-                      title={`SFX Caption Click (${(shown.start + sfx.offset).toFixed(2)}s) — Click to play, ✕ to mute`}
+                      title={`${caption.words.map((w) => w.text).join(' ')} — Click to play, ✕ to delete SFX`}
                     >
-                      <span className="sfx-key-icon">{isMuted ? '🔇' : '⌨'}</span>
-                      {laneWidth >= 50 && (
+                      <span className="sfx-key-icon">{isCapMuted ? '🔇' : '⌨'}</span>
+                      {laneWidth >= 55 && (
                         <span className="sfx-key-text">{caption.words.map((w) => w.text).join(' ')}</span>
                       )}
                       <button
                         type="button"
-                        className="sfx-key-mute"
+                        className={`sfx-key-mute ${isCapMuted ? 'add-btn' : 'del-btn'}`}
                         onClick={(e) => {
                           e.stopPropagation();
                           toggleSfxMute(caption.id);
                         }}
-                        title={isMuted ? 'Unmute' : 'Mute'}
+                        title={isCapMuted ? 'Add SFX back to this subtitle' : 'Delete SFX from this subtitle'}
                       >
-                        {isMuted ? '+' : '×'}
+                        {isCapMuted ? '+' : '✕'}
                       </button>
                     </div>
                   );
@@ -663,54 +730,55 @@ export function Timeline({ captions, seek }: { captions: Caption[]; seek: (t: nu
                 return (
                   <div
                     key={`sfx-lane-${caption.id}`}
-                    className="sfx-block-lane"
+                    className={`sfx-block-lane ${isCapMuted ? 'muted' : ''} ${isCur ? 'active' : ''} ${isSelected ? 'selected' : ''}`}
                     style={{ left: laneLeft, width: laneWidth }}
+                    title={`Subtitle: "${caption.words.map((w) => w.text).join(' ')}"`}
                   >
+                    {/* Caption level quick delete/add button */}
+                    <button
+                      type="button"
+                      className={`sfx-lane-mute-btn ${isCapMuted ? 'add' : 'del'}`}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        toggleSfxMute(caption.id);
+                      }}
+                      title={isCapMuted ? 'Add SFX to this subtitle block' : 'Delete SFX for this subtitle block'}
+                    >
+                      {isCapMuted ? '+ Add' : '✕'}
+                    </button>
+
                     {caption.words.map((w, wIdx) => {
                       const id = w.tokenId ?? `${caption.id}:${w.text}:${wIdx}`;
-                      const isMuted = mutedSet.has(id);
+                      const isWordMuted = isCapMuted || mutedSet.has(id);
                       const wStartRel = Math.max(0, w.start - shown.start);
                       const segLeft = wStartRel * zoom;
-                      const segWidth = Math.max(5, (w.end - w.start) * zoom - 1);
-                      const isCur = Math.abs(playhead.get() - (w.start + sfx.offset)) < 0.08;
+                      const segWidth = Math.max(26, (w.end - w.start) * zoom - 1);
+                      const isWordCur = Math.abs(playhead.get() - (w.start + sfx.offset)) < 0.08;
 
                       return (
                         <div
                           key={id}
-                          className={`sfx-key-segment ${isMuted ? 'muted' : ''} ${isCur ? 'active' : ''}`}
+                          className={`sfx-key-segment ${isWordMuted ? 'muted' : ''} ${isWordCur ? 'active' : ''}`}
                           style={{ left: segLeft, width: segWidth }}
                           onClick={(e) => {
                             e.stopPropagation();
                             seek(w.start + sfx.offset + 0.001);
-                            if (!isMuted) playSfxSound(sfx.sound, sfx.volume);
+                            if (!isWordMuted) playSfxSound(sfx.sound, sfx.volume);
                           }}
-                          onDoubleClick={(e) => {
-                            e.stopPropagation();
-                            toggleSfxMute(id);
-                          }}
-                          title={`"${w.text}" (${(w.start + sfx.offset).toFixed(2)}s) — Click to play, double-click or ✕ to mute`}
+                          title={`"${w.text}" (${(w.start + sfx.offset).toFixed(2)}s) — Click to play, ✕ to delete word SFX`}
                         >
-                          {segWidth >= 46 ? (
-                            <>
-                              <span className="sfx-key-icon">{isMuted ? '🔇' : '⌨'}</span>
-                              <span className="sfx-key-text">{w.text}</span>
-                              <button
-                                type="button"
-                                className="sfx-key-mute"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  toggleSfxMute(id);
-                                }}
-                                title={isMuted ? 'Unmute' : 'Mute'}
-                              >
-                                {isMuted ? '+' : '×'}
-                              </button>
-                            </>
-                          ) : segWidth >= 22 ? (
-                            <span className="sfx-key-text">{w.text}</span>
-                          ) : (
-                            <span className="sfx-key-pip" />
-                          )}
+                          <span className="sfx-key-text">{w.text}</span>
+                          <button
+                            type="button"
+                            className={`sfx-word-del-btn ${isWordMuted ? 'add' : 'del'}`}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              toggleSfxMute(id);
+                            }}
+                            title={isWordMuted ? `Add SFX to "${w.text}"` : `Delete SFX from "${w.text}"`}
+                          >
+                            {isWordMuted ? '+' : '✕'}
+                          </button>
                         </div>
                       );
                     })}
@@ -765,6 +833,164 @@ export function Timeline({ captions, seek }: { captions: Caption[]; seek: (t: nu
           </div>
         </div>
       </div>
+
+      {/* SFX Manager Modal — Organized Edit & Manage View */}
+      {sfxManagerOpen && (
+        <div className="sfx-modal-overlay" onClick={() => setSfxManagerOpen(false)}>
+          <div className="sfx-modal-content" onClick={(e) => e.stopPropagation()}>
+            <div className="sfx-modal-header">
+              <div className="sfx-modal-title-group">
+                <span className="sfx-modal-icon">⌨</span>
+                <h3>Typing Sound Effects (SFX) Manager</h3>
+                <span className="sfx-active-tag">{sfxCount} Active Sounds</span>
+              </div>
+              <button
+                type="button"
+                className="ghost sfx-modal-close"
+                onClick={() => setSfxManagerOpen(false)}
+                title="Close SFX Manager (Esc)"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="sfx-modal-toolbar">
+              <div className="sfx-modal-batch">
+                <span className="modal-label">Quick Actions:</span>
+                <button
+                  type="button"
+                  className="bulk-sfx-btn on"
+                  onClick={() => enableAllSfx()}
+                  title="Enable SFX on all captions across entire video"
+                >
+                  ⚡ Apply to All Subtitles
+                </button>
+                <button
+                  type="button"
+                  className="bulk-sfx-btn mute"
+                  onClick={() => clearAllSfx(captions.map((c) => c.id))}
+                  title="Delete/Mute SFX on all captions"
+                >
+                  🗑️ Delete All SFX
+                </button>
+                {selectedIds.size > 0 && (
+                  <button
+                    type="button"
+                    className="bulk-sfx-btn on"
+                    onClick={() => setBulkCaptionSfx([...selectedIds], true)}
+                    title="Apply to selected subtitles"
+                  >
+                    🎯 Apply to {selectedIds.size} Selected
+                  </button>
+                )}
+              </div>
+
+              <div className="sfx-modal-sound-ctrl">
+                <select
+                  value={sfx.sound}
+                  onChange={(e) => {
+                    const snd = e.target.value as SfxSoundType;
+                    setSfx({ sound: snd });
+                    playSfxSound(snd, sfx.volume);
+                  }}
+                  className="sfx-tool-select"
+                >
+                  <option value="mechanical">⌨️ Mechanical Click</option>
+                  <option value="typewriter">🖨️ Typewriter</option>
+                  <option value="pop">💥 Pop Click</option>
+                  <option value="tap">🔉 Soft Tap</option>
+                </select>
+
+                <div className="sfx-vol-box">
+                  <span className="sfx-vol-label">Vol</span>
+                  <input
+                    type="range"
+                    min={0}
+                    max={1}
+                    step={0.05}
+                    value={sfx.volume}
+                    onChange={(e) => setSfx({ volume: Number(e.target.value) }, 'sfx-vol')}
+                  />
+                  <span className="sfx-vol-val">{Math.round(sfx.volume * 100)}%</span>
+                </div>
+              </div>
+            </div>
+
+            <div className="sfx-modal-list">
+              <div className="sfx-list-heading">
+                <span>Timeline Subtitle Lines ({captions.length})</span>
+                <span className="heading-hint">Click ✕ to delete SFX from any word or subtitle</span>
+              </div>
+              {captions.map((cap, cIdx) => {
+                const mutedSet = new Set(sfx.mutedIds ?? []);
+                const isCapMuted = mutedSet.has(cap.id);
+                return (
+                  <div key={cap.id} className={`sfx-modal-row ${isCapMuted ? 'muted' : 'active'}`}>
+                    <div className="sfx-row-meta">
+                      <span className="sfx-row-num">#{cIdx + 1}</span>
+                      <span className="sfx-row-time">
+                        {captionStart(cap).toFixed(1)}s – {captionEnd(cap).toFixed(1)}s
+                      </span>
+                      <button
+                        type="button"
+                        className={`sfx-cap-toggle-btn ${isCapMuted ? 'off' : 'on'}`}
+                        onClick={() => toggleSfxMute(cap.id)}
+                        title={isCapMuted ? 'Add SFX to this subtitle' : 'Delete SFX from this subtitle'}
+                      >
+                        {isCapMuted ? '+ Add SFX' : '✓ SFX Active'}
+                      </button>
+                    </div>
+
+                    <div className="sfx-words-chips">
+                      {cap.words.map((w, wIdx) => {
+                        const id = w.tokenId ?? `${cap.id}:${w.text}:${wIdx}`;
+                        const isWordMuted = isCapMuted || mutedSet.has(id);
+                        return (
+                          <div
+                            key={id}
+                            className={`sfx-word-pill ${isWordMuted ? 'deleted' : 'active'}`}
+                            onClick={() => {
+                              seek(w.start + sfx.offset + 0.001);
+                              if (!isWordMuted) playSfxSound(sfx.sound, sfx.volume);
+                            }}
+                            title={`Click to preview sound. Click ${isWordMuted ? '+' : '✕'} to toggle.`}
+                          >
+                            <span className="word-text">{w.text}</span>
+                            <button
+                              type="button"
+                              className="word-del-icon"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                toggleSfxMute(id);
+                              }}
+                              title={isWordMuted ? 'Re-add SFX for this word' : 'Delete SFX for this word'}
+                            >
+                              {isWordMuted ? '+' : '✕'}
+                            </button>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            <div className="sfx-modal-footer">
+              <span className="footer-tip">
+                💡 Tip: You can also delete or add SFX directly on the timeline track by clicking ✕ or + on any word!
+              </span>
+              <button
+                type="button"
+                className="primary sfx-done-btn"
+                onClick={() => setSfxManagerOpen(false)}
+              >
+                Done
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </section>
   );
 }

@@ -67,6 +67,12 @@ type EditorState = {
   setSfx(config: Partial<SfxConfig>, key?: string): void;
   /** Toggles sound mute on an individual word or caption block */
   toggleSfxMute(id: string): void;
+  /** Bulk set SFX enabled/disabled for multiple caption IDs */
+  setBulkCaptionSfx(captionIds: string[], enabled: boolean): void;
+  /** Clear / mute SFX for all captions */
+  clearAllSfx(allCaptionIds: string[]): void;
+  /** Enable SFX for all captions */
+  enableAllSfx(): void;
 
   editCaption(id: string, text: string): void;
   splitCaption(id: string, wordIndex: number): void;
@@ -314,6 +320,32 @@ export const useEditor = create<EditorState>((set, get) => {
         }
         doc.sfx.mutedIds = Array.from(muted);
       }),
+
+    setBulkCaptionSfx: (captionIds, enabled) =>
+      commit((doc) => {
+        if (!doc.sfx) doc.sfx = { ...defaultSfx };
+        const muted = new Set(doc.sfx.mutedIds ?? []);
+        for (const cid of captionIds) {
+          if (enabled) {
+            muted.delete(cid);
+          } else {
+            muted.add(cid);
+          }
+        }
+        doc.sfx.mutedIds = Array.from(muted);
+      }, 'bulk-sfx'),
+
+    clearAllSfx: (allCaptionIds) =>
+      commit((doc) => {
+        if (!doc.sfx) doc.sfx = { ...defaultSfx };
+        doc.sfx.mutedIds = [...allCaptionIds];
+      }, 'clear-all-sfx'),
+
+    enableAllSfx: () =>
+      commit((doc) => {
+        if (!doc.sfx) doc.sfx = { ...defaultSfx };
+        doc.sfx.mutedIds = [];
+      }, 'enable-all-sfx'),
 
     editCaption(id, text) {
       commit((doc) => {

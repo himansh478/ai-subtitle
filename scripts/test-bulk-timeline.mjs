@@ -59,6 +59,38 @@ function createMockEditor(initialDoc) {
         }
       }, key);
     },
+    toggleSfxMute: (id) => {
+      commit((d) => {
+        if (!d.sfx) d.sfx = { enabled: true, sound: 'mechanical', trigger: 'word', volume: 0.7, offset: 0, mutedIds: [] };
+        const muted = new Set(d.sfx.mutedIds ?? []);
+        if (muted.has(id)) muted.delete(id);
+        else muted.add(id);
+        d.sfx.mutedIds = Array.from(muted);
+      });
+    },
+    setBulkCaptionSfx: (captionIds, enabled) => {
+      commit((d) => {
+        if (!d.sfx) d.sfx = { enabled: true, sound: 'mechanical', trigger: 'word', volume: 0.7, offset: 0, mutedIds: [] };
+        const muted = new Set(d.sfx.mutedIds ?? []);
+        for (const cid of captionIds) {
+          if (enabled) muted.delete(cid);
+          else muted.add(cid);
+        }
+        d.sfx.mutedIds = Array.from(muted);
+      }, 'bulk-sfx');
+    },
+    clearAllSfx: (allCaptionIds) => {
+      commit((d) => {
+        if (!d.sfx) d.sfx = { enabled: true, sound: 'mechanical', trigger: 'word', volume: 0.7, offset: 0, mutedIds: [] };
+        d.sfx.mutedIds = [...allCaptionIds];
+      }, 'clear-all-sfx');
+    },
+    enableAllSfx: () => {
+      commit((d) => {
+        if (!d.sfx) d.sfx = { enabled: true, sound: 'mechanical', trigger: 'word', volume: 0.7, offset: 0, mutedIds: [] };
+        d.sfx.mutedIds = [];
+      }, 'enable-all-sfx');
+    },
   };
 }
 
@@ -249,4 +281,50 @@ test('TC 8: rapid slider drag merges into a single undo step', async () => {
   editor.undo();
   // Undoing once brings back initial state without captionStyles overrides
   assert.deepEqual(editor.getDoc().captionStyles, {});
+});
+
+test('TC 9: toggleSfxMute deletes/adds SFX for an individual word or caption', () => {
+  const initialDoc = { templateId: 'pop-viral', overrides: {}, tokens: [], captionStyles: {} };
+  const editor = createMockEditor(initialDoc);
+
+  // Mute specific word
+  editor.toggleSfxMute('w_token_123');
+  assert.deepEqual(editor.getDoc().sfx.mutedIds, ['w_token_123']);
+
+  // Mute second word
+  editor.toggleSfxMute('w_token_456');
+  assert.deepEqual(editor.getDoc().sfx.mutedIds, ['w_token_123', 'w_token_456']);
+
+  // Unmute/re-add first word
+  editor.toggleSfxMute('w_token_123');
+  assert.deepEqual(editor.getDoc().sfx.mutedIds, ['w_token_456']);
+});
+
+test('TC 10: setBulkCaptionSfx applies/removes SFX on selected subtitles in one step', () => {
+  const initialDoc = { templateId: 'pop-viral', overrides: {}, tokens: [], captionStyles: {} };
+  const editor = createMockEditor(initialDoc);
+
+  // Remove SFX on selected captions c1 and c3
+  editor.setBulkCaptionSfx(['c1', 'c3'], false);
+  assert.ok(editor.getDoc().sfx.mutedIds.includes('c1'));
+  assert.ok(editor.getDoc().sfx.mutedIds.includes('c3'));
+
+  // Re-enable SFX on c1
+  editor.setBulkCaptionSfx(['c1'], true);
+  assert.ok(!editor.getDoc().sfx.mutedIds.includes('c1'));
+  assert.ok(editor.getDoc().sfx.mutedIds.includes('c3'));
+});
+
+test('TC 11: clearAllSfx and enableAllSfx wipe or restore SFX across entire timeline', () => {
+  const initialDoc = { templateId: 'pop-viral', overrides: {}, tokens: [], captionStyles: {} };
+  const editor = createMockEditor(initialDoc);
+  const allCaptions = ['c1', 'c2', 'c3', 'c4'];
+
+  // Clear all
+  editor.clearAllSfx(allCaptions);
+  assert.equal(editor.getDoc().sfx.mutedIds.length, 4);
+
+  // Enable all
+  editor.enableAllSfx();
+  assert.equal(editor.getDoc().sfx.mutedIds.length, 0);
 });

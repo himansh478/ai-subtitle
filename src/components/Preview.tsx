@@ -275,6 +275,7 @@ export function Preview({
             const mutedSet = new Set(sfx.mutedIds ?? []);
             if (sfx.trigger === 'word') {
               for (const cap of captionsRef.current) {
+                if (mutedSet.has(cap.id)) continue;
                 for (const w of cap.words) {
                   const t = w.start + sfx.offset;
                   if (t > prevTime && t <= curTime) {
