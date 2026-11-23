@@ -1,6 +1,6 @@
 // All pricing lives here. The server reads these numbers when it creates an order, so
 // a browser can never change what it pays. Prices are in rupees.
-export const FREE_MINUTES = 10;
+export const FREE_MINUTES = 3;
 
 export const PLANS = {
   starter: { name: 'Starter', price: 199, minutes: 60, days: 30 },

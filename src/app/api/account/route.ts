@@ -21,7 +21,7 @@ export async function GET(request: Request) {
     return Response.json({
       email: viewer.email,
       freeMinutes: FREE_MINUTES,
-      freeLeft: user ? user.freeSecondsLeft : (isVip ? 360000 : 600),
+      freeLeft: user ? user.freeSecondsLeft : (isVip ? 360000 : FREE_MINUTES * 60),
       paidLeft: user ? user.paidSecondsLeft : (isVip ? 360000 : 0),
       paidUntil: null,
       watermark: isVip ? false : (user ? user.watermark : false),
@@ -39,7 +39,7 @@ export async function GET(request: Request) {
     return Response.json({
       email: viewer.email,
       freeMinutes: FREE_MINUTES,
-      freeLeft: 600,
+      freeLeft: FREE_MINUTES * 60,
       paidLeft: 0,
       paidUntil: null,
       watermark: !isVip,

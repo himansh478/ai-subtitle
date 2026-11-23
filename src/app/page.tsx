@@ -6,7 +6,7 @@ import { useEffect, useState, type DragEvent } from 'react';
 import { CaptionShowcase } from '@/components/CaptionShowcase';
 import { VocabularyField } from '@/components/VocabularyField';
 import { useAccount, minutesLeft } from '@/lib/account';
-import { accountsOn, supabase } from '@/lib/auth';
+import { accountsOn, signOut, supabase } from '@/lib/auth';
 import { browserProblem } from '@/lib/browser';
 import { createProject, OutOfMinutes, type Stage } from '@/lib/ingest';
 import type { Project } from '@/lib/project';
@@ -160,14 +160,19 @@ export default function Home() {
                       <span>{minutesLeft(account)} mins left</span>
                     </Link>
                   )}
-                  <button className="ghost sign-out-btn" onClick={() => supabase?.auth.signOut()}>
+                  <button className="ghost sign-out-btn" onClick={() => signOut()}>
                     Sign out
                   </button>
                 </div>
               ) : (
-                <Link href="/login">
-                  <button className="primary sign-in-btn">Sign in</button>
-                </Link>
+                <div className="auth-btn-group">
+                  <Link href="/login">
+                    <button className="ghost sign-in-btn">Sign in</button>
+                  </Link>
+                  <Link href="/login?mode=signup">
+                    <button className="primary sign-up-btn">Create Account</button>
+                  </Link>
+                </div>
               )
             ) : (
               <span className="local-mode-chip" title="Running with local backend & unlimited processing">
@@ -183,24 +188,16 @@ export default function Home() {
         <section className="hero-section">
           <div className="hero-pill">
             <span className="sparkle">✨</span>
-            <span>Next-Gen Word-Level Video Captioning</span>
+            <span>AI Video Caption Generator</span>
           </div>
 
           <h1 className="hero-title">
-            Turn Any Video into <span className="gradient-text">Viral Reels</span> with Dynamic AI Captions
+            Turn Any Video into <span className="gradient-text">Viral Reels</span> with AI Captions
           </h1>
 
           <p className="hero-subtitle">
-            Word-perfect forced alignment (±30ms), auto-detected Hinglish, Hindi & English speech,
-            and trending kinetic styles. <strong>Your video never leaves your device.</strong>
+            Auto-generate animated subtitles in Hindi, Hinglish &amp; English in seconds.
           </p>
-
-          <div className="hero-pills">
-            <span className="feature-pill">⚡ Frame-Accurate (±30ms)</span>
-            <span className="feature-pill">🇮🇳 Hindi & Hinglish WhatsApp-Spelling</span>
-            <span className="feature-pill">🎨 60 FPS Export & 4K Crisp Text</span>
-            <span className="feature-pill">🔒 100% Private (On-Device Video)</span>
-          </div>
         </section>
 
         {problem && (
@@ -314,7 +311,7 @@ export default function Home() {
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                       <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
                     </svg>
-                    <span>100% Private — Video stays in your browser; only lightweight audio is extracted.</span>
+                    <span>100% Private — Video stays on your device</span>
                   </div>
                 </div>
               </label>
@@ -465,20 +462,6 @@ export default function Home() {
             </div>
           )}
         </section>
-
-        {/* Pro Tips & Keyboard Shortcuts Footer */}
-        <footer className="home-footer">
-          <div className="footer-tips">
-            <span className="tip-label">Keyboard Shortcuts in Studio:</span>
-            <span className="kbd-pill"><kbd>Space</kbd> Play / Pause</span>
-            <span className="kbd-pill"><kbd>S</kbd> Split Word / Caption</span>
-            <span className="kbd-pill"><kbd>Ctrl+Z</kbd> Undo</span>
-            <span className="kbd-pill"><kbd>← / →</kbd> Frame Step</span>
-          </div>
-          <div className="footer-credits">
-            <span>Cwaya Captions Studio • Powered by Whisper, Google Gemini & Modal GPU Alignment</span>
-          </div>
-        </footer>
       </main>
     </div>
   );

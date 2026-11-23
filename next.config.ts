@@ -10,6 +10,9 @@ const nextConfig: NextConfig = {
   // Mobile performance: compress all API responses, including the streaming NDJSON
   compress: true,
 
+  // Allow HMR from both localhost and 127.0.0.1 without cross-origin warnings
+  allowedDevOrigins: ['127.0.0.1:3100', 'localhost:3100'],
+
   // Allow larger audio uploads from phone cameras (default is 1MB for body)
   experimental: {
     serverActions: {

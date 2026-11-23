@@ -2,13 +2,19 @@ import { authenticateUser, createSessionToken } from '@/server/session';
 
 export async function POST(request: Request) {
   try {
-    const { email, password } = await request.json();
+    const body = await request.json().catch(() => ({}));
+    const email = typeof body.email === 'string' ? body.email.trim().toLowerCase() : '';
+    const password = typeof body.password === 'string' ? body.password : '';
+
     if (!email || !password) {
       return Response.json({ error: 'Email and password are required.' }, { status: 400 });
     }
 
     const user = authenticateUser(email, password);
     const token = createSessionToken(user);
+
+    const isProd = process.env.NODE_ENV === 'production';
+    const cookieFlags = `Path=/; HttpOnly; SameSite=Lax; Max-Age=${30 * 24 * 3600}${isProd ? '; Secure' : ''}`;
 
     return Response.json(
       {
@@ -24,7 +30,7 @@ export async function POST(request: Request) {
       },
       {
         headers: {
-          'Set-Cookie': `cwaya_session=${token}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${30 * 24 * 3600}`,
+          'Set-Cookie': `cwaya_session=${token}; ${cookieFlags}`,
         },
       }
     );

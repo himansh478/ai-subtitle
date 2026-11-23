@@ -2,6 +2,8 @@ import { createHmac, randomBytes, scryptSync, timingSafeEqual } from 'node:crypt
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
+export const DEFAULT_FREE_SECONDS = 180; // 3 minutes free trial
+
 export type UserRecord = {
   id: string;
   email: string;
@@ -68,7 +70,7 @@ export function registerUser(email: string, password: string, name?: string): Us
     passwordHash,
     salt,
     createdAt: Date.now(),
-    freeSecondsLeft: isVip ? 360000 : 600, // VIP: 100 hours, standard: 10 minutes
+    freeSecondsLeft: isVip ? 360000 : DEFAULT_FREE_SECONDS, // VIP: 100 hours, standard: 3 minutes (180s)
     paidSecondsLeft: isVip ? 360000 : 0,
     watermark: !isVip,
   };
@@ -80,15 +82,10 @@ export function registerUser(email: string, password: string, name?: string): Us
 
 export function authenticateUser(email: string, password: string): UserRecord {
   const cleanEmail = email.trim().toLowerCase();
-  let user = memoryUsers[cleanEmail];
-
-  // Auto-seed VIP or demo account if not exists
-  if (!user && (VIP_EMAILS.includes(cleanEmail) || cleanEmail === 'tester@example.com')) {
-    user = registerUser(cleanEmail, password || 'admin123');
-  }
+  const user = memoryUsers[cleanEmail];
 
   if (!user) {
-    throw new Error('No account found with this email.');
+    throw new Error('No account found with this email. Please sign up.');
   }
 
   const expectedHash = hashPassword(password, user.salt);

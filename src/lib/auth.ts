@@ -39,6 +39,21 @@ export function clearLocalAuth() {
   window.dispatchEvent(new Event('cwaya-auth-change'));
 }
 
+export async function signOut() {
+  clearLocalAuth();
+  try {
+    await fetch('/api/auth/logout', { method: 'POST' });
+  } catch {}
+  if (supabase) {
+    try {
+      await supabase.auth.signOut();
+    } catch {}
+  }
+  if (typeof window !== 'undefined') {
+    window.location.href = '/';
+  }
+}
+
 /** A request to this app's own API, as the person signed in. */
 export async function api(path: string, init: RequestInit = {}) {
   const headers = new Headers(init.headers);

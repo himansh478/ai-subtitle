@@ -2,8 +2,8 @@
 
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { useState, type FormEvent } from 'react';
-import { clearLocalAuth, setLocalAuth, supabase } from '@/lib/auth';
+import { useEffect, useState, type FormEvent } from 'react';
+import { setLocalAuth, supabase } from '@/lib/auth';
 
 type Mode = 'signin' | 'signup' | 'forgot';
 
@@ -13,10 +13,22 @@ export default function LoginPage() {
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
+
+  // Read URL query parameter ?mode=signup or ?mode=signin
+  useEffect(() => {
+    try {
+      const search = new URLSearchParams(window.location.search);
+      const m = search.get('mode');
+      if (m === 'signup' || m === 'signin' || m === 'forgot') {
+        setMode(m);
+      }
+    } catch {}
+  }, []);
 
   const goBack = () => {
     let target = '/';
@@ -39,6 +51,25 @@ export default function LoginPage() {
 
     const cleanEmail = email.trim().toLowerCase();
 
+    // Client-side validations
+    if (mode === 'signup') {
+      if (!name.trim()) {
+        setError('Please enter your full name.');
+        setBusy(false);
+        return;
+      }
+      if (password.length < 6) {
+        setError('Password must be at least 6 characters long.');
+        setBusy(false);
+        return;
+      }
+      if (password !== confirmPassword) {
+        setError('Passwords do not match. Please re-enter your password.');
+        setBusy(false);
+        return;
+      }
+    }
+
     try {
       if (mode === 'signin') {
         // 1. Try Supabase if configured
@@ -50,7 +81,7 @@ export default function LoginPage() {
           }
         }
 
-        // 2. Built-in auth API
+        // 2. Built-in secure auth API
         const res = await fetch('/api/auth/login', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -75,7 +106,7 @@ export default function LoginPage() {
           }
         }
 
-        // 2. Built-in auth API
+        // 2. Built-in secure auth API
         const res = await fetch('/api/auth/signup', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -90,32 +121,10 @@ export default function LoginPage() {
         if (supabase) {
           await supabase.auth.resetPasswordForEmail(cleanEmail);
         }
-        setMessage('If an account exists for this email, password instructions have been sent.');
+        setMessage('If an account exists for this email, password reset instructions have been sent.');
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Authentication failed.');
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const quickLogin = async (vipEmail: string) => {
-    setEmail(vipEmail);
-    setPassword('vip123');
-    setBusy(true);
-    setError(null);
-    try {
-      const res = await fetch('/api/auth/login', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: vipEmail, password: 'vip123' }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Quick login failed.');
-      setLocalAuth(data.token, data.user);
-      goBack();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Quick login failed.');
     } finally {
       setBusy(false);
     }
@@ -164,11 +173,11 @@ export default function LoginPage() {
         </div>
 
         <div className="auth-header">
-          <h2>{mode === 'signup' ? 'Start Captioning Like a Pro' : 'Welcome Back'}</h2>
+          <h2>{mode === 'signup' ? 'Create Your Account' : 'Welcome Back'}</h2>
           <p>
             {mode === 'signup'
-              ? 'Create your free account to get started with AI subtitles.'
-              : 'Sign in to access your video projects and kinetic styles.'}
+              ? 'Sign up to start auto-captioning your videos with AI.'
+              : 'Sign in to access your projects, presets, and cloud sync.'}
           </p>
         </div>
 
@@ -200,7 +209,7 @@ export default function LoginPage() {
               <span>Full Name</span>
               <input
                 type="text"
-                placeholder="e.g. Himansh Gour"
+                placeholder="e.g. Rahul Sharma"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
                 required
@@ -240,7 +249,7 @@ export default function LoginPage() {
             <div className="password-input-wrap">
               <input
                 type={showPassword ? 'text' : 'password'}
-                placeholder={mode === 'signup' ? 'At least 6 characters' : 'Enter your password'}
+                placeholder={mode === 'signup' ? 'Create a password (min 6 characters)' : 'Enter your password'}
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 required
@@ -268,11 +277,26 @@ export default function LoginPage() {
             </div>
           </label>
 
+          {mode === 'signup' && (
+            <label className="auth-field">
+              <span>Confirm Password</span>
+              <input
+                type={showPassword ? 'text' : 'password'}
+                placeholder="Confirm your password"
+                value={confirmPassword}
+                onChange={(e) => setConfirmPassword(e.target.value)}
+                required
+                minLength={6}
+                autoComplete="new-password"
+              />
+            </label>
+          )}
+
           <button type="submit" className="primary auth-submit-btn" disabled={busy}>
             {busy ? (
               <span className="btn-spinner" />
             ) : mode === 'signup' ? (
-              'Create Account'
+              'Create Secure Account'
             ) : mode === 'forgot' ? (
               'Send Reset Link'
             ) : (
@@ -281,25 +305,12 @@ export default function LoginPage() {
           </button>
         </form>
 
-        {/* Quick VIP Login helper */}
-        <div className="auth-quick-login">
-          <span className="quick-label">Instant 1-Click Access:</span>
-          <div className="quick-buttons">
-            <button
-              type="button"
-              className="ghost quick-chip"
-              onClick={() => quickLogin('himanshgour7@gmail.com')}
-            >
-              ⚡ Himansh Gour (VIP)
-            </button>
-            <button
-              type="button"
-              className="ghost quick-chip"
-              onClick={() => quickLogin('sudhanshugour89@gmail.com')}
-            >
-              ⚡ Sudhanshu Gour (VIP)
-            </button>
-          </div>
+        {/* Security Badge */}
+        <div className="auth-security-badge">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+          </svg>
+          <span>Encrypted Credentials • 100% Private &amp; Secure</span>
         </div>
 
         {/* Footer info */}

@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { useAccount, type Account } from '@/lib/account';
-import { accountsOn, api, supabase } from '@/lib/auth';
+import { accountsOn, api, signOut, supabase } from '@/lib/auth';
 import { PLANS, type PlanId } from '@/lib/plans';
 
 type RazorpayOptions = {
@@ -134,7 +134,7 @@ export default function AccountPage() {
     <main className="home">
       <div className="account-bar">
         <Link href="/">Your projects</Link>
-        <button className="ghost" onClick={() => supabase?.auth.signOut()}>
+        <button className="ghost" onClick={() => signOut()}>
           Sign out
         </button>
       </div>

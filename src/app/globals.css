@@ -318,7 +318,7 @@ a {
 .hero-section {
   text-align: center;
   max-width: 780px;
-  margin: 0 auto 36px;
+  margin: 0 auto 28px;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -335,7 +335,7 @@ a {
   background: rgba(255, 94, 54, 0.1);
   border: 1px solid rgba(255, 94, 54, 0.25);
   color: #ff9170;
-  margin-bottom: 16px;
+  margin-bottom: 14px;
 }
 
 .hero-title {
@@ -344,7 +344,7 @@ a {
   line-height: 1.16;
   letter-spacing: -0.03em;
   color: var(--text-bright);
-  margin: 0 0 14px;
+  margin: 0 0 12px;
 }
 
 .gradient-text {
@@ -354,11 +354,11 @@ a {
 }
 
 .hero-subtitle {
-  font-size: 16px;
-  line-height: 1.55;
+  font-size: 15px;
+  line-height: 1.5;
   color: var(--muted);
-  margin: 0 0 22px;
-  max-width: 640px;
+  margin: 0;
+  max-width: 600px;
 }
 
 .hero-subtitle strong {
@@ -1755,45 +1755,45 @@ a {
   animation: spin 0.7s linear infinite;
 }
 
-.auth-quick-login {
-  margin-top: 22px;
-  padding-top: 18px;
-  border-top: 1px solid var(--line-light);
+.auth-security-badge {
+  margin-top: 20px;
+  padding: 10px 14px;
+  background: rgba(16, 185, 129, 0.08);
+  border: 1px solid rgba(16, 185, 129, 0.2);
+  border-radius: 8px;
   display: flex;
-  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  color: #6ee7b7;
+  font-size: 11.5px;
+  font-weight: 500;
+}
+
+.auth-btn-group {
+  display: flex;
+  align-items: center;
   gap: 8px;
 }
 
-.quick-label {
-  font-size: 11px;
-  font-weight: 600;
+.auth-btn-group .sign-in-btn {
+  padding: 6px 14px;
+  font-size: 13px;
   color: var(--muted);
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
+  border: 1px solid transparent;
+  border-radius: 8px;
 }
 
-.quick-buttons {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
+.auth-btn-group .sign-in-btn:hover {
+  color: var(--text-bright);
+  background: rgba(255, 255, 255, 0.06);
 }
 
-.quick-chip {
-  background: var(--panel-3);
-  border: 1px solid var(--line);
-  color: #ffaa88;
-  font-size: 12px;
-  padding: 6px 12px;
-  border-radius: 16px;
-  min-height: auto;
-  cursor: pointer;
-  transition: all 0.15s ease;
-}
-
-.quick-chip:hover {
-  background: rgba(255, 94, 54, 0.15);
-  border-color: var(--accent);
-  color: #ffffff;
+.auth-btn-group .sign-up-btn {
+  padding: 6px 16px;
+  font-size: 13px;
+  font-weight: 600;
+  border-radius: 8px;
 }
 
 .auth-footer {

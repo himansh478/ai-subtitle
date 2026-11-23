@@ -1,17 +1,29 @@
 import { createSessionToken, registerUser } from '@/server/session';
 
+const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
 export async function POST(request: Request) {
   try {
-    const { email, password, name } = await request.json();
-    if (!email || !password) {
-      return Response.json({ error: 'Email and password are required.' }, { status: 400 });
+    const body = await request.json().catch(() => ({}));
+    const email = typeof body.email === 'string' ? body.email.trim().toLowerCase() : '';
+    const password = typeof body.password === 'string' ? body.password : '';
+    const name = typeof body.name === 'string' ? body.name.trim().slice(0, 80) : '';
+
+    if (!email || !EMAIL_REGEX.test(email)) {
+      return Response.json({ error: 'Please enter a valid email address.' }, { status: 400 });
     }
-    if (password.length < 6) {
+    if (!password || password.length < 6) {
       return Response.json({ error: 'Password must be at least 6 characters long.' }, { status: 400 });
+    }
+    if (password.length > 128) {
+      return Response.json({ error: 'Password is too long (max 128 characters).' }, { status: 400 });
     }
 
     const user = registerUser(email, password, name);
     const token = createSessionToken(user);
+
+    const isProd = process.env.NODE_ENV === 'production';
+    const cookieFlags = `Path=/; HttpOnly; SameSite=Lax; Max-Age=${30 * 24 * 3600}${isProd ? '; Secure' : ''}`;
 
     return Response.json(
       {
@@ -27,7 +39,7 @@ export async function POST(request: Request) {
       },
       {
         headers: {
-          'Set-Cookie': `cwaya_session=${token}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${30 * 24 * 3600}`,
+          'Set-Cookie': `cwaya_session=${token}; ${cookieFlags}`,
         },
       }
     );
