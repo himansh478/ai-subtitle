@@ -35,6 +35,8 @@ export function Timeline({ captions, seek }: { captions: Caption[]; seek: (t: nu
   const enableAllSfx = useEditor.getState().enableAllSfx;
   const [zoom, setZoom] = useState(70);
   const [sfxManagerOpen, setSfxManagerOpen] = useState(false);
+  const [activeWordInspectorId, setActiveWordInspectorId] = useState<string | null>(null);
+  const [sfxSearch, setSfxSearch] = useState('');
 
   // ── Multi-select state ──────────────────────────────────────────────────────
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -674,7 +676,7 @@ export function Timeline({ captions, seek }: { captions: Caption[]; seek: (t: nu
           {/* Editable SFX Sound Track (Clean, Organized, Pro Block-Bound Track) */}
           {sfx.enabled && (
             <div className="sfx-track" title="Typing SFX Track — Click subtitle to play, ✕ to delete SFX">
-              <div className="sfx-track-header" onClick={() => setSfxManagerOpen(true)} title="Click to open SFX Manager">
+              <div className="sfx-track-header" onClick={() => setSfxManagerOpen(true)} title="Click to open full SFX Manager">
                 <span className="sfx-track-label">
                   <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
                     <rect x="2" y="4" width="20" height="16" rx="2" />
@@ -684,104 +686,156 @@ export function Timeline({ captions, seek }: { captions: Caption[]; seek: (t: nu
                 </span>
               </div>
 
-              {captions.map((caption) => {
+              {captions.map((caption, cIdx) => {
                 const shown = preview?.id === caption.id ? preview : { start: captionStart(caption), end: captionEnd(caption) };
                 const laneLeft = Math.max(0, shown.start + sfx.offset) * zoom;
-                const laneWidth = Math.max(18, (shown.end - shown.start) * zoom);
+                const laneWidth = Math.max(24, (shown.end - shown.start) * zoom);
                 const mutedSet = new Set(sfx.mutedIds ?? []);
                 const isCapMuted = mutedSet.has(caption.id);
                 const isCur = Math.abs(playhead.get() - (shown.start + sfx.offset)) < 0.1;
                 const isSelected = selectedIds.has(caption.id) || selectedCaption === caption.id;
+                const isInspectorOpen = activeWordInspectorId === caption.id;
 
-                // Caption trigger or narrow lane: render coherent subtitle block with delete/add button
-                if (sfx.trigger === 'caption' || (laneWidth < 70 && !isSelected)) {
-                  return (
-                    <div
-                      key={`sfx-cap-${caption.id}`}
-                      className={`sfx-block-unit ${isCapMuted ? 'muted' : ''} ${isCur ? 'active' : ''} ${isSelected ? 'selected' : ''}`}
-                      style={{ left: laneLeft, width: laneWidth }}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        seek(shown.start + sfx.offset + 0.001);
-                        if (!isCapMuted) playSfxSound(sfx.sound, sfx.volume);
-                      }}
-                      title={`${caption.words.map((w) => w.text).join(' ')} — Click to play, ✕ to delete SFX`}
-                    >
-                      <span className="sfx-key-icon">{isCapMuted ? '🔇' : '⌨'}</span>
-                      {laneWidth >= 55 && (
-                        <span className="sfx-key-text">{caption.words.map((w) => w.text).join(' ')}</span>
+                return (
+                  <div
+                    key={`sfx-cap-${caption.id}`}
+                    className={`sfx-block-unit ${isCapMuted ? 'muted' : ''} ${isCur ? 'active' : ''} ${isSelected ? 'selected' : ''} ${isInspectorOpen ? 'inspecting' : ''}`}
+                    style={{ left: laneLeft, width: laneWidth }}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      seek(shown.start + sfx.offset + 0.001);
+                      if (!isCapMuted) playSfxSound(sfx.sound, sfx.volume);
+                    }}
+                    title={`#${cIdx + 1}: "${caption.words.map((w) => w.text).join(' ')}" — Click to play, ✎ to edit words, ✕ to delete SFX`}
+                  >
+                    <span className="sfx-key-icon">{isCapMuted ? '🔇' : '⌨'}</span>
+
+                    {/* Smooth Subtitle Text (no squished dots or overlapping boxes) */}
+                    {laneWidth >= 48 && (
+                      <span className="sfx-key-text">{caption.words.map((w) => w.text).join(' ')}</span>
+                    )}
+
+                    {/* Subtle rhythmic beat ticks showing word sync timings */}
+                    {!isCapMuted && sfx.trigger === 'word' && laneWidth >= 60 && (
+                      <div className="sfx-beat-ticks" aria-hidden="true">
+                        {caption.words.map((w, wIdx) => {
+                          const id = w.tokenId ?? `${caption.id}:${w.text}:${wIdx}`;
+                          const isWordMuted = mutedSet.has(id);
+                          const capDur = Math.max(0.05, shown.end - shown.start);
+                          const relPct = Math.max(2, Math.min(96, ((w.start - shown.start) / capDur) * 100));
+                          return (
+                            <span
+                              key={id}
+                              className={`sfx-beat-tick ${isWordMuted ? 'muted' : 'active'}`}
+                              style={{ left: `${relPct}%` }}
+                            />
+                          );
+                        })}
+                      </div>
+                    )}
+
+                    {/* Quick Action Controls on the block */}
+                    <div className="sfx-unit-actions" onClick={(e) => e.stopPropagation()}>
+                      {/* Word Inspector Toggle Button */}
+                      {caption.words.length > 1 && (
+                        <button
+                          type="button"
+                          className={`sfx-words-edit-btn ${isInspectorOpen ? 'active' : ''}`}
+                          onClick={() => setActiveWordInspectorId(isInspectorOpen ? null : caption.id)}
+                          title="Open word-by-word SFX editor for this subtitle"
+                        >
+                          ✎
+                        </button>
                       )}
+
+                      {/* Delete / Add Subtitle Sound */}
                       <button
                         type="button"
                         className={`sfx-key-mute ${isCapMuted ? 'add-btn' : 'del-btn'}`}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          toggleSfxMute(caption.id);
-                        }}
+                        onClick={() => toggleSfxMute(caption.id)}
                         title={isCapMuted ? 'Add SFX back to this subtitle' : 'Delete SFX from this subtitle'}
                       >
                         {isCapMuted ? '+' : '✕'}
                       </button>
                     </div>
-                  );
-                }
 
-                // Word-by-word synchronized keycaps bounded to subtitle block lane:
-                return (
-                  <div
-                    key={`sfx-lane-${caption.id}`}
-                    className={`sfx-block-lane ${isCapMuted ? 'muted' : ''} ${isCur ? 'active' : ''} ${isSelected ? 'selected' : ''}`}
-                    style={{ left: laneLeft, width: laneWidth }}
-                    title={`Subtitle: "${caption.words.map((w) => w.text).join(' ')}"`}
-                  >
-                    {/* Caption level quick delete/add button */}
-                    <button
-                      type="button"
-                      className={`sfx-lane-mute-btn ${isCapMuted ? 'add' : 'del'}`}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        toggleSfxMute(caption.id);
-                      }}
-                      title={isCapMuted ? 'Add SFX to this subtitle block' : 'Delete SFX for this subtitle block'}
-                    >
-                      {isCapMuted ? '+ Add' : '✕'}
-                    </button>
-
-                    {caption.words.map((w, wIdx) => {
-                      const id = w.tokenId ?? `${caption.id}:${w.text}:${wIdx}`;
-                      const isWordMuted = isCapMuted || mutedSet.has(id);
-                      const wStartRel = Math.max(0, w.start - shown.start);
-                      const segLeft = wStartRel * zoom;
-                      const segWidth = Math.max(26, (w.end - w.start) * zoom - 1);
-                      const isWordCur = Math.abs(playhead.get() - (w.start + sfx.offset)) < 0.08;
-
-                      return (
-                        <div
-                          key={id}
-                          className={`sfx-key-segment ${isWordMuted ? 'muted' : ''} ${isWordCur ? 'active' : ''}`}
-                          style={{ left: segLeft, width: segWidth }}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            seek(w.start + sfx.offset + 0.001);
-                            if (!isWordMuted) playSfxSound(sfx.sound, sfx.volume);
-                          }}
-                          title={`"${w.text}" (${(w.start + sfx.offset).toFixed(2)}s) — Click to play, ✕ to delete word SFX`}
-                        >
-                          <span className="sfx-key-text">{w.text}</span>
+                    {/* Inline Floating Word SFX Inspector Popover */}
+                    {isInspectorOpen && (
+                      <div className="sfx-word-inspector-popover" onClick={(e) => e.stopPropagation()}>
+                        <div className="sfx-popover-header">
+                          <span className="popover-title">
+                            ⌨ SFX Words (#{cIdx + 1}): &quot;{caption.words.map((w) => w.text).join(' ')}&quot;
+                          </span>
                           <button
                             type="button"
-                            className={`sfx-word-del-btn ${isWordMuted ? 'add' : 'del'}`}
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              toggleSfxMute(id);
-                            }}
-                            title={isWordMuted ? `Add SFX to "${w.text}"` : `Delete SFX from "${w.text}"`}
+                            className="sfx-popover-close"
+                            onClick={() => setActiveWordInspectorId(null)}
+                            title="Close"
                           >
-                            {isWordMuted ? '+' : '✕'}
+                            ✕
                           </button>
                         </div>
-                      );
-                    })}
+
+                        <div className="sfx-popover-words">
+                          {caption.words.map((w, wIdx) => {
+                            const id = w.tokenId ?? `${caption.id}:${w.text}:${wIdx}`;
+                            const isWordMuted = isCapMuted || mutedSet.has(id);
+                            return (
+                              <div
+                                key={id}
+                                className={`sfx-word-chip ${isWordMuted ? 'muted' : 'active'}`}
+                                onClick={() => {
+                                  seek(w.start + sfx.offset + 0.001);
+                                  if (!isWordMuted) playSfxSound(sfx.sound, sfx.volume);
+                                }}
+                                title={`Click to play sound. Click ${isWordMuted ? '+' : '✕'} to toggle.`}
+                              >
+                                <span className="chip-time">{w.start.toFixed(1)}s</span>
+                                <span className="chip-text">{w.text}</span>
+                                <button
+                                  type="button"
+                                  className={`chip-toggle-btn ${isWordMuted ? 'add' : 'del'}`}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    toggleSfxMute(id);
+                                  }}
+                                  title={isWordMuted ? `Add SFX to "${w.text}"` : `Delete SFX from "${w.text}"`}
+                                >
+                                  {isWordMuted ? '+' : '✕'}
+                                </button>
+                              </div>
+                            );
+                          })}
+                        </div>
+
+                        <div className="sfx-popover-footer">
+                          <button
+                            type="button"
+                            className="sfx-pop-action-btn"
+                            onClick={() => {
+                              // Enable all words in this caption
+                              for (let i = 0; i < caption.words.length; i++) {
+                                const id = caption.words[i].tokenId ?? `${caption.id}:${caption.words[i].text}:${i}`;
+                                if (mutedSet.has(id)) toggleSfxMute(id);
+                              }
+                              if (isCapMuted) toggleSfxMute(caption.id);
+                            }}
+                          >
+                            ⚡ Enable All Words
+                          </button>
+                          <button
+                            type="button"
+                            className="sfx-pop-action-btn mute"
+                            onClick={() => {
+                              // Mute this entire caption
+                              if (!isCapMuted) toggleSfxMute(caption.id);
+                            }}
+                          >
+                            🔇 Mute Subtitle
+                          </button>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 );
               })}
@@ -916,12 +970,39 @@ export function Timeline({ captions, seek }: { captions: Caption[]; seek: (t: nu
               </div>
             </div>
 
+            <div className="sfx-modal-search-bar">
+              <span className="search-icon">🔍</span>
+              <input
+                type="text"
+                placeholder="Search word or subtitle to manage sound..."
+                value={sfxSearch}
+                onChange={(e) => setSfxSearch(e.target.value)}
+                className="sfx-search-input"
+              />
+              {sfxSearch && (
+                <button
+                  type="button"
+                  className="sfx-search-clear"
+                  onClick={() => setSfxSearch('')}
+                  title="Clear search"
+                >
+                  ✕
+                </button>
+              )}
+            </div>
+
             <div className="sfx-modal-list">
               <div className="sfx-list-heading">
-                <span>Timeline Subtitle Lines ({captions.length})</span>
+                <span>Timeline Subtitles ({captions.length})</span>
                 <span className="heading-hint">Click ✕ to delete SFX from any word or subtitle</span>
               </div>
-              {captions.map((cap, cIdx) => {
+              {captions
+                .filter((cap) => {
+                  if (!sfxSearch.trim()) return true;
+                  const q = sfxSearch.toLowerCase();
+                  return cap.words.some((w) => w.text.toLowerCase().includes(q));
+                })
+                .map((cap, cIdx) => {
                 const mutedSet = new Set(sfx.mutedIds ?? []);
                 const isCapMuted = mutedSet.has(cap.id);
                 return (
@@ -945,10 +1026,11 @@ export function Timeline({ captions, seek }: { captions: Caption[]; seek: (t: nu
                       {cap.words.map((w, wIdx) => {
                         const id = w.tokenId ?? `${cap.id}:${w.text}:${wIdx}`;
                         const isWordMuted = isCapMuted || mutedSet.has(id);
+                        const isMatch = sfxSearch.trim() && w.text.toLowerCase().includes(sfxSearch.toLowerCase());
                         return (
                           <div
                             key={id}
-                            className={`sfx-word-pill ${isWordMuted ? 'deleted' : 'active'}`}
+                            className={`sfx-word-pill ${isWordMuted ? 'deleted' : 'active'} ${isMatch ? 'highlight-match' : ''}`}
                             onClick={() => {
                               seek(w.start + sfx.offset + 0.001);
                               if (!isWordMuted) playSfxSound(sfx.sound, sfx.volume);

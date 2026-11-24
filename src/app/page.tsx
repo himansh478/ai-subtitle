@@ -134,7 +134,7 @@ export default function Home() {
               <span className="brand-name">Cwaya</span>
               <span className="brand-tag">Captions AI</span>
             </div>
-            <span className="badge-pill beta">Studio v2.4</span>
+            <span className="badge-pill creator">Creator Suite</span>
           </Link>
 
           <nav className="nav-links">
@@ -146,9 +146,9 @@ export default function Home() {
           </nav>
 
           <div className="nav-actions">
-            <div className="engine-status" title="Local Whisper and Gemini forced alignment workers active">
-              <span className="status-dot pulse" />
-              <span>AI Engine Ready</span>
+            <div className="engine-status" title="High-accuracy Whisper & Hindi forced alignment ready">
+              <span className="status-dot ready" />
+              <span>Studio Ready</span>
             </div>
 
             {accountsOn && ready ? (
@@ -203,17 +203,27 @@ export default function Home() {
         {/* Hero Section */}
         <section className="hero-section">
           <div className="hero-pill">
-            <span className="sparkle">✨</span>
-            <span>AI Video Caption Generator</span>
+            <span className="sparkle">⚡</span>
+            <span>Word-Synced Animated Captions</span>
           </div>
 
           <h1 className="hero-title">
-            Turn Any Video into <span className="gradient-text">Viral Reels</span> with AI Captions
+            Captions that <span className="gradient-text">stop the scroll</span>.
           </h1>
 
           <p className="hero-subtitle">
-            Auto-generate animated subtitles in Hindi, Hinglish &amp; English in seconds.
+            Turn any clip into viral Reels, Shorts &amp; TikToks with animated, word-timed subtitles in Hindi, Hinglish &amp; English.
           </p>
+
+          <div className="hero-trust-row">
+            <span className="trust-item">⚡ 30ms Word Precision</span>
+            <span className="trust-sep">•</span>
+            <span className="trust-item">⌨️ Synchronized Typing SFX</span>
+            <span className="trust-sep">•</span>
+            <span className="trust-item">🎨 Viral Kinetic Styles</span>
+            <span className="trust-sep">•</span>
+            <span className="trust-item">🔒 100% Private (Runs Local)</span>
+          </div>
         </section>
 
         {problem && (
@@ -313,7 +323,14 @@ export default function Home() {
 
                   <div className="dropzone-texts">
                     <span className="dropzone-title">Drop your video here, or click to upload</span>
-                    <span className="dropzone-subtitle">MP4, MOV, or WebM clips up to 60 seconds (1080p & 4K supported)</span>
+                    <span className="dropzone-subtitle">MP4, MOV, or WebM clips up to 60 seconds (1080p &amp; 4K supported)</span>
+                    <div className="dropzone-formats">
+                      <span className="format-tag">MP4</span>
+                      <span className="format-tag">MOV</span>
+                      <span className="format-tag">WebM</span>
+                      <span className="format-tag">4K Ready</span>
+                      <span className="format-tag">9:16 Shorts</span>
+                    </div>
                   </div>
 
                   <button type="button" className="primary upload-btn" onClick={() => document.getElementById('file')?.click()}>
