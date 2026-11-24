@@ -1509,8 +1509,8 @@ a {
 @media (max-width: 768px) {
   /* Navbar */
   .navbar-container {
-    padding: 0 14px;
-    height: 56px;
+    padding: 0 12px;
+    height: 54px;
   }
   .nav-links {
     display: none;
@@ -1518,7 +1518,8 @@ a {
   .brand-tag {
     display: none;
   }
-  .badge-pill.beta {
+  .badge-pill.beta,
+  .badge-pill.creator {
     display: none;
   }
   .engine-status span:last-child {
@@ -1528,13 +1529,30 @@ a {
     padding: 4px 6px;
   }
   .local-mode-chip {
+    font-size: 10.5px;
+    padding: 3px 6px;
+  }
+  .paid-plans-btn {
+    padding: 4px 8px;
     font-size: 11px;
-    padding: 3px 8px;
+    gap: 3px;
+  }
+  .credits-badge {
+    padding: 4px 8px;
+    font-size: 11px;
+    gap: 3px;
+  }
+  .auth-btn-group {
+    gap: 6px;
+  }
+  .sign-in-btn, .sign-up-btn {
+    padding: 6px 10px;
+    font-size: 11.5px;
   }
 
   /* Main Content & Hero */
   .main-content {
-    padding: 24px 14px 60px;
+    padding: 20px 12px 60px;
   }
   .hero-section {
     margin-bottom: 24px;
@@ -1545,14 +1563,21 @@ a {
     margin-bottom: 12px;
   }
   .hero-title {
-    font-size: clamp(25px, 6.5vw, 36px);
+    font-size: clamp(24px, 6.5vw, 34px);
     line-height: 1.2;
-    margin-bottom: 12px;
+    margin-bottom: 10px;
   }
   .hero-subtitle {
-    font-size: 14px;
+    font-size: 13.5px;
     line-height: 1.5;
-    margin-bottom: 16px;
+    margin-bottom: 12px;
+  }
+  .hero-trust-row {
+    gap: 6px 8px;
+    margin-top: 10px;
+  }
+  .trust-item {
+    font-size: 11px;
   }
   .hero-pills {
     gap: 6px;
@@ -1564,23 +1589,38 @@ a {
 
   /* Upload Dropzone for Android & Touch */
   .upload-container {
-    margin-bottom: 36px;
+    margin-bottom: 32px;
   }
   .dropzone {
-    padding: 36px 16px;
+    padding: 28px 14px;
     border-radius: 16px;
   }
   .upload-icon-circle {
-    width: 56px;
-    height: 56px;
-    border-radius: 16px;
-    margin-bottom: 14px;
+    width: 52px;
+    height: 52px;
+    border-radius: 14px;
+    margin-bottom: 12px;
   }
-  .upload-title {
-    font-size: 18px;
+  .dropzone-title {
+    font-size: 17px;
   }
-  .upload-subtitle {
-    font-size: 13px;
+  .dropzone-subtitle {
+    font-size: 12.5px;
+  }
+  .dropzone-formats {
+    gap: 4px;
+    margin-top: 8px;
+  }
+  .format-tag {
+    font-size: 9px;
+    padding: 1.5px 5px;
+  }
+  .upload-btn {
+    width: 100%;
+    max-width: 280px;
+    justify-content: center;
+    padding: 11px 20px;
+    font-size: 13.5px;
   }
 
   /* Processing Stepper */
@@ -1628,16 +1668,42 @@ a {
 
 @media (max-width: 480px) {
   .main-content {
-    padding: 18px 10px 48px;
+    padding: 16px 8px 48px;
   }
   .navbar-container {
-    padding: 0 10px;
+    padding: 0 8px;
   }
   .dropzone {
-    padding: 28px 12px;
+    padding: 24px 10px;
   }
   .brand-name {
-    font-size: 16px;
+    font-size: 15px;
+  }
+  .vocab-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+  }
+  .vocab-toggle {
+    align-self: flex-start;
+  }
+  .vocab-input-row {
+    flex-direction: column;
+    gap: 8px;
+  }
+  .vocab-input-row button {
+    width: 100%;
+    justify-content: center;
+  }
+  .vocab-suggestions {
+    gap: 4px;
+  }
+  .vocab-suggestion-pill {
+    font-size: 10.5px;
+    padding: 2px 6px;
+  }
+  .auth-card {
+    padding: 20px 14px;
   }
 }
 
@@ -3216,6 +3282,10 @@ a {
     min-height: 32px;
     margin-left: auto;
     flex-shrink: 0;
+    position: sticky;
+    right: 4px;
+    z-index: 10;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
   }
 
   .export-menu-dropdown {
@@ -3606,6 +3676,89 @@ a {
   .needle-handle {
     width: 18px;
     height: 22px;
+  }
+
+  /* Caption block edge resizing on touch */
+  .block .edge {
+    width: 14px;
+  }
+
+  /* Prevent iOS auto-zoom on subtitle edit */
+  .caption-textarea {
+    font-size: 16px !important;
+  }
+
+  /* Touch-friendly word chips */
+  .word-chip {
+    padding: 5px 9px;
+    font-size: 13px;
+    min-height: 32px;
+  }
+
+  .word-sfx-chip-btn {
+    min-width: 28px;
+    min-height: 28px;
+    font-size: 11px;
+  }
+
+  /* SFX Track & Subtitle Clip on Phone */
+  .sfx-block-unit {
+    height: 26px;
+    font-size: 10px;
+    padding: 0 6px;
+    gap: 4px;
+  }
+
+  .sfx-words-edit-btn,
+  .sfx-key-mute {
+    padding: 3px 6px;
+    font-size: 10px;
+    min-height: 24px;
+  }
+
+  /* Mobile Bottom Sheet for Inline Word SFX Inspector */
+  .sfx-word-inspector-popover {
+    position: fixed;
+    bottom: 12px;
+    left: 10px;
+    right: 10px;
+    width: auto;
+    min-width: 0;
+    max-width: 100vw;
+    border-radius: 14px;
+    box-shadow: 0 16px 48px rgba(0, 0, 0, 0.8), 0 0 0 1px rgba(255, 255, 255, 0.1);
+    z-index: 100;
+    padding: 12px 14px;
+    animation: popover-slide-in 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+
+  .sfx-popover-words {
+    max-height: 180px;
+  }
+
+  .sfx-word-chip {
+    padding: 5px 8px;
+    font-size: 11px;
+    min-height: 28px;
+  }
+
+  /* Account & Pricing on Phone */
+  .stats {
+    grid-template-columns: 1fr;
+    gap: 8px;
+  }
+
+  .plans {
+    grid-template-columns: 1fr;
+    gap: 10px;
+  }
+
+  .stat {
+    padding: 12px 14px;
+  }
+
+  .plan {
+    padding: 14px;
   }
 
   /* Modals & Dialogs on Mobile */

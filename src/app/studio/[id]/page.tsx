@@ -134,7 +134,7 @@ export default function StudioPage({ params }: { params: Promise<{ id: string }>
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
               <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
             </svg>
-            Captions
+            <span>Captions ({captions.length})</span>
           </button>
           <button
             role="tab"
@@ -147,7 +147,7 @@ export default function StudioPage({ params }: { params: Promise<{ id: string }>
               <circle cx="12" cy="12" r="10"/>
               <path d="m4.93 4.93 4.24 4.24"/>
             </svg>
-            Styles
+            <span>Styles</span>
           </button>
           <button
             role="tab"
@@ -159,7 +159,7 @@ export default function StudioPage({ params }: { params: Promise<{ id: string }>
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
               <polygon points="5 3 19 12 5 21 5 3"/>
             </svg>
-            Timeline
+            <span>Timeline &amp; SFX</span>
           </button>
         </div>
         <CaptionList captions={captions} seek={(t) => previewRef.current?.seek(t)} />
