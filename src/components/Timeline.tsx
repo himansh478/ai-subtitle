@@ -38,8 +38,9 @@ export function Timeline({ captions, seek }: { captions: Caption[]; seek: (t: nu
   const [activeWordInspectorId, setActiveWordInspectorId] = useState<string | null>(null);
   const [sfxSearch, setSfxSearch] = useState('');
 
-  // ── Multi-select state ──────────────────────────────────────────────────────
-  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  // ── Multi-select state (shared globally with Preview & Store) ──────────────
+  const selectedIds = useEditor((s) => s.selectedCaptionIds);
+  const setSelectedIds = useEditor((s) => s.setSelectedCaptionIds);
   const [lasso, setLasso] = useState<Lasso | null>(null);
   const lassoStartRef = useRef<number | null>(null);
   const lassoActiveRef = useRef(false);

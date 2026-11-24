@@ -65,7 +65,7 @@ export function Preview({
   const clockRef = useRef<HTMLSpanElement>(null);
   const studioRef = useRef<Studio | null>(null);
   const captionsRef = useRef(captions);
-  const pressRef = useRef<{ y: number; tokenId?: string; captionId?: string; moved: boolean } | null>(null);
+  const pressRef = useRef<{ x: number; y: number; tokenId?: string; captionId?: string; moved: boolean } | null>(null);
   const planRef = useRef<{ key: unknown[]; at: (caption: Caption, time: number) => number } | null>(null);
   const trackRef = useRef<{ faces: unknown; at: ReturnType<typeof faceTrack> } | null>(null);
   const cropRef = useRef<{ faces: unknown; crop: Crop } | null>(null);
@@ -427,7 +427,7 @@ export function Preview({
       previewToggle(videoRef.current);
       return;
     }
-    pressRef.current = { y: e.clientY, tokenId: hit.caption.words[hit.index].tokenId, captionId: hit.caption.id, moved: false };
+    pressRef.current = { x: e.clientX, y: e.clientY, tokenId: hit.caption.words[hit.index].tokenId, captionId: hit.caption.id, moved: false };
     e.currentTarget.setPointerCapture(e.pointerId);
   };
 
@@ -447,17 +447,46 @@ export function Preview({
   const move = (e: PointerEvent<HTMLCanvasElement>) => {
     const press = pressRef.current;
     if (!press) return;
-    if (!press.moved && Math.abs(e.clientY - press.y) < DRAG_START) return;
+    const dx = Math.abs(e.clientX - press.x);
+    const dy = Math.abs(e.clientY - press.y);
+    if (!press.moved && dx < DRAG_START && dy < DRAG_START) return;
     press.moved = true;
     const box = e.currentTarget.getBoundingClientRect();
+
+    // Vertical Anchor Y Calculation (with 50% snap)
     const anchorY = Math.min(0.95, Math.max(0.05, (e.clientY - box.top) / box.height));
-    const snapped = Math.abs(anchorY - CENTRE) < CENTRE_SNAP;
-    setCentred(snapped);
-    const newY = snapped ? CENTRE : Math.round(anchorY * 1000) / 1000;
-    if (press.captionId) {
-      useEditor.getState().setCaptionStyle(press.captionId, { anchorY: newY }, 'block-y');
+    const snappedY = Math.abs(anchorY - CENTRE) < CENTRE_SNAP;
+    setCentred(snappedY);
+    const newY = snappedY ? CENTRE : Math.round(anchorY * 1000) / 1000;
+
+    // Horizontal Anchor X Calculation (with 50% center snap)
+    const anchorX = Math.min(0.92, Math.max(0.08, (e.clientX - box.left) / box.width));
+    const snappedX = Math.abs(anchorX - CENTRE) < CENTRE_SNAP;
+    const newX = snappedX ? CENTRE : Math.round(anchorX * 1000) / 1000;
+
+    const { selectedCaptionIds } = useEditor.getState();
+    const allSelected = selectedCaptionIds.size === captionsRef.current.length && captionsRef.current.length > 0;
+    const isBulk = selectedCaptionIds.size > 0 && (
+      allSelected ||
+      (press.captionId && selectedCaptionIds.has(press.captionId))
+    );
+
+    if (isBulk) {
+      // 🎯 Bulk Movement: Cursor dragging on preview changes positions of ALL selected subtitles together!
+      useEditor.getState().setBulkCaptionStyle(
+        [...selectedCaptionIds],
+        { anchorY: newY, anchorX: newX },
+        'bulk-cursor-drag'
+      );
+    } else if (press.captionId) {
+      // Single subtitle cursor drag
+      useEditor.getState().setCaptionStyle(
+        press.captionId,
+        { anchorY: newY, anchorX: newX },
+        'block-drag'
+      );
     } else {
-      useEditor.getState().setStyle({ anchorY: newY }, 'position');
+      useEditor.getState().setStyle({ anchorY: newY, anchorX: newX }, 'position');
     }
   };
 

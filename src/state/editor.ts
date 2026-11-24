@@ -26,6 +26,8 @@ type EditorState = {
   selectedToken: string | null;
   /** The caption block being styled. Not part of undo. */
   selectedCaption: string | null;
+  /** The multi-selected caption IDs (via Select All or Lasso). Not part of undo. */
+  selectedCaptionIds: Set<string>;
   /** Free-plan mark on the picture. Comes from the account, not the project. */
   watermark: boolean;
 
@@ -37,6 +39,7 @@ type EditorState = {
   setNotice(notice: string | null): void;
   selectToken(id: string | null): void;
   selectCaption(id: string | null): void;
+  setSelectedCaptionIds(ids: Set<string> | ((prev: Set<string>) => Set<string>)): void;
   setWatermark(on: boolean): void;
   setFaces(faces: FaceSample[]): void;
 
@@ -143,9 +146,10 @@ export const useEditor = create<EditorState>((set, get) => {
     notice: null,
     selectedToken: null,
     selectedCaption: null,
+    selectedCaptionIds: new Set<string>(),
     watermark: false,
 
-    load: (project) => set({ project, doc: project.doc, past: [], future: [], lastKey: null, notice: null, selectedToken: null, selectedCaption: null }),
+    load: (project) => set({ project, doc: project.doc, past: [], future: [], lastKey: null, notice: null, selectedToken: null, selectedCaption: null, selectedCaptionIds: new Set<string>() }),
 
     undo() {
       const { doc, past, future } = get();
@@ -171,6 +175,11 @@ export const useEditor = create<EditorState>((set, get) => {
     selectToken: (selectedToken) => set({ selectedToken }),
 
     selectCaption: (selectedCaption) => set({ selectedCaption }),
+
+    setSelectedCaptionIds: (ids) =>
+      set((s) => ({
+        selectedCaptionIds: typeof ids === 'function' ? ids(s.selectedCaptionIds) : ids,
+      })),
 
     setWatermark: (watermark) => set({ watermark }),
 

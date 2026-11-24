@@ -59,6 +59,23 @@ function createMockEditor(initialDoc) {
         }
       }, key);
     },
+    setCaptionStyle: (id, style, key) => {
+      commit((d) => {
+        if (!d.captionStyles) d.captionStyles = {};
+        if (!style) {
+          delete d.captionStyles[id];
+        } else {
+          if (!d.captionStyles[id]) d.captionStyles[id] = {};
+          for (const [k, v] of Object.entries(style)) {
+            if (v === null || v === undefined) {
+              delete d.captionStyles[id][k];
+            } else {
+              d.captionStyles[id][k] = v;
+            }
+          }
+        }
+      }, key);
+    },
     toggleSfxMute: (id) => {
       commit((d) => {
         if (!d.sfx) d.sfx = { enabled: true, sound: 'mechanical', trigger: 'word', volume: 0.7, offset: 0, mutedIds: [] };
@@ -327,4 +344,192 @@ test('TC 11: clearAllSfx and enableAllSfx wipe or restore SFX across entire time
   // Enable all
   editor.enableAllSfx();
   assert.equal(editor.getDoc().sfx.mutedIds.length, 0);
+});
+
+// ── Canvas Cursor Dragging Tests ──────────────────────────────────────────
+
+test('TC 12: Cursor drag on preview moves ALL selected captions when all captions are selected', () => {
+  const initialDoc = {
+    templateId: 'pop-viral',
+    overrides: {},
+    tokens: [],
+    captionStyles: {
+      c1: { anchorY: 0.8, anchorX: 0.5 },
+      c2: { anchorY: 0.8, anchorX: 0.5 },
+      c3: { anchorY: 0.8, anchorX: 0.5 },
+    },
+  };
+  const editor = createMockEditor(initialDoc);
+  const selectedCaptionIds = new Set(['c1', 'c2', 'c3']);
+  const allCaptions = ['c1', 'c2', 'c3'];
+
+  // Simulate cursor drag on canvas to (X: 0.35, Y: 0.25)
+  const isBulk = selectedCaptionIds.size > 0 && (
+    selectedCaptionIds.size === allCaptions.length ||
+    selectedCaptionIds.has('c1')
+  );
+  assert.equal(isBulk, true);
+
+  editor.setBulkCaptionStyle(
+    [...selectedCaptionIds],
+    { anchorY: 0.25, anchorX: 0.35 },
+    'bulk-cursor-drag'
+  );
+
+  const doc = editor.getDoc();
+  assert.equal(doc.captionStyles['c1'].anchorY, 0.25);
+  assert.equal(doc.captionStyles['c1'].anchorX, 0.35);
+  assert.equal(doc.captionStyles['c2'].anchorY, 0.25);
+  assert.equal(doc.captionStyles['c2'].anchorX, 0.35);
+  assert.equal(doc.captionStyles['c3'].anchorY, 0.25);
+  assert.equal(doc.captionStyles['c3'].anchorX, 0.35);
+});
+
+test('TC 13: Cursor drag on preview moves ONLY the selected subset when a partial group is selected', () => {
+  const initialDoc = {
+    templateId: 'pop-viral',
+    overrides: {},
+    tokens: [],
+    captionStyles: {
+      c1: { anchorY: 0.8, anchorX: 0.5 },
+      c2: { anchorY: 0.8, anchorX: 0.5 },
+      c3: { anchorY: 0.8, anchorX: 0.5 },
+    },
+  };
+  const editor = createMockEditor(initialDoc);
+  const selectedCaptionIds = new Set(['c1', 'c2']);
+  const allCaptions = ['c1', 'c2', 'c3'];
+
+  // User drags c2 on canvas (which is in the selected group)
+  const draggedId = 'c2';
+  const isBulk = selectedCaptionIds.size > 0 && (
+    selectedCaptionIds.size === allCaptions.length ||
+    selectedCaptionIds.has(draggedId)
+  );
+  assert.equal(isBulk, true);
+
+  editor.setBulkCaptionStyle(
+    [...selectedCaptionIds],
+    { anchorY: 0.15, anchorX: 0.5 },
+    'bulk-cursor-drag'
+  );
+
+  const doc = editor.getDoc();
+  assert.equal(doc.captionStyles['c1'].anchorY, 0.15);
+  assert.equal(doc.captionStyles['c2'].anchorY, 0.15);
+  // c3 was NOT in the selected group, so it should remain untouched
+  assert.equal(doc.captionStyles['c3'].anchorY, 0.8);
+});
+
+test('TC 14: Cursor drag on an unselected caption moves only that caption', () => {
+  const initialDoc = {
+    templateId: 'pop-viral',
+    overrides: {},
+    tokens: [],
+    captionStyles: {
+      c1: { anchorY: 0.8, anchorX: 0.5 },
+      c2: { anchorY: 0.8, anchorX: 0.5 },
+      c3: { anchorY: 0.8, anchorX: 0.5 },
+    },
+  };
+  const editor = createMockEditor(initialDoc);
+  const selectedCaptionIds = new Set(['c1', 'c2']);
+  const allCaptions = ['c1', 'c2', 'c3'];
+
+  // User drags c3 (which is NOT selected)
+  const draggedId = 'c3';
+  const isBulk = selectedCaptionIds.size > 0 && (
+    selectedCaptionIds.size === allCaptions.length ||
+    selectedCaptionIds.has(draggedId)
+  );
+  assert.equal(isBulk, false);
+
+  editor.setCaptionStyle(draggedId, { anchorY: 0.5, anchorX: 0.5 }, 'block-drag');
+
+  const doc = editor.getDoc();
+  // c1 and c2 remain at their initial position
+  assert.equal(doc.captionStyles['c1'].anchorY, 0.8);
+  assert.equal(doc.captionStyles['c2'].anchorY, 0.8);
+  // Only c3 moved
+  assert.equal(doc.captionStyles['c3'].anchorY, 0.5);
+});
+
+test('TC 15: Cursor drag preserves existing per-block styles while moving all selected captions', () => {
+  const initialDoc = {
+    templateId: 'pop-viral',
+    overrides: {},
+    tokens: [],
+    captionStyles: {
+      c1: { anchorY: 0.8, behindPerson: true, color: '#ff0000' },
+      c2: { anchorY: 0.8, fontFamily: 'Rozha One' },
+    },
+  };
+  const editor = createMockEditor(initialDoc);
+  const selectedCaptionIds = new Set(['c1', 'c2']);
+
+  editor.setBulkCaptionStyle(
+    [...selectedCaptionIds],
+    { anchorY: 0.3, anchorX: 0.5 },
+    'bulk-cursor-drag'
+  );
+
+  const doc = editor.getDoc();
+  // Anchor positions updated
+  assert.equal(doc.captionStyles['c1'].anchorY, 0.3);
+  assert.equal(doc.captionStyles['c1'].anchorX, 0.5);
+  // Custom styles preserved
+  assert.equal(doc.captionStyles['c1'].behindPerson, true);
+  assert.equal(doc.captionStyles['c1'].color, '#ff0000');
+  assert.equal(doc.captionStyles['c2'].anchorY, 0.3);
+  assert.equal(doc.captionStyles['c2'].fontFamily, 'Rozha One');
+});
+
+test('TC 16: Rapid cursor drag events merge into a single undo step', () => {
+  const initialDoc = {
+    templateId: 'pop-viral',
+    overrides: {},
+    tokens: [],
+    captionStyles: {
+      c1: { anchorY: 0.8, anchorX: 0.5 },
+      c2: { anchorY: 0.8, anchorX: 0.5 },
+    },
+  };
+  const editor = createMockEditor(initialDoc);
+  const selectedCaptionIds = new Set(['c1', 'c2']);
+
+  // Rapid drag movements across screen
+  editor.setBulkCaptionStyle([...selectedCaptionIds], { anchorY: 0.7, anchorX: 0.5 }, 'bulk-cursor-drag');
+  editor.setBulkCaptionStyle([...selectedCaptionIds], { anchorY: 0.6, anchorX: 0.48 }, 'bulk-cursor-drag');
+  editor.setBulkCaptionStyle([...selectedCaptionIds], { anchorY: 0.5, anchorX: 0.45 }, 'bulk-cursor-drag');
+  editor.setBulkCaptionStyle([...selectedCaptionIds], { anchorY: 0.4, anchorX: 0.4 }, 'bulk-cursor-drag');
+
+  // Should have coalesced into 1 past entry
+  assert.equal(editor.getPast().length, 1);
+  assert.equal(editor.getDoc().captionStyles['c1'].anchorY, 0.4);
+  assert.equal(editor.getDoc().captionStyles['c2'].anchorY, 0.4);
+
+  // Undo restores both captions in 1 single step
+  editor.undo();
+  assert.equal(editor.getDoc().captionStyles['c1'].anchorY, 0.8);
+  assert.equal(editor.getDoc().captionStyles['c2'].anchorY, 0.8);
+
+  // Redo reapplies both captions in 1 single step
+  editor.redo();
+  assert.equal(editor.getDoc().captionStyles['c1'].anchorY, 0.4);
+  assert.equal(editor.getDoc().captionStyles['c2'].anchorY, 0.4);
+});
+
+test('TC 17: Center snapping behavior snaps to exactly 0.5 when within tolerance', () => {
+  const CENTRE = 0.5;
+  const CENTRE_SNAP = 0.015;
+
+  const calculateSnapped = (raw) => {
+    return Math.abs(raw - CENTRE) < CENTRE_SNAP ? CENTRE : Math.round(raw * 1000) / 1000;
+  };
+
+  assert.equal(calculateSnapped(0.508), 0.5); // Snapped
+  assert.equal(calculateSnapped(0.493), 0.5); // Snapped
+  assert.equal(calculateSnapped(0.53), 0.53); // Outside snap threshold, keep exact
+  assert.equal(calculateSnapped(0.2), 0.2);   // Top area
+  assert.equal(calculateSnapped(0.85), 0.85); // Bottom area
 });
